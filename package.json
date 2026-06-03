@@ -1,0 +1,41 @@
+{
+  "name": "arellan-mechanic-ui",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --port 3002",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "test": "vitest",
+    "test:watch": "vitest --watch",
+    "lint": "tsc --noEmit"
+  },
+  "dependencies": {
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-router-dom": "^6.20.0",
+    "@arellan-hnos-core-ecosystem/ui": "file:../arellan-design-system/packages/ui",
+    "zustand": "^4.4.7",
+    "@tanstack/react-query": "^5.17.0",
+    "react-hook-form": "^7.49.2",
+    "@hookform/resolvers": "^3.3.3",
+    "zod": "^3.22.4",
+    "axios": "^1.6.3",
+    "idb": "^8.0.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.3.3",
+    "vite": "^5.0.11",
+    "@vitejs/plugin-react": "^4.2.1",
+    "vite-plugin-pwa": "^0.17.5",
+    "workbox-window": "^7.0.0",
+    "tailwindcss": "^3.4.1",
+    "postcss": "^8.4.33",
+    "autoprefixer": "^10.4.17",
+    "vitest": "^1.2.0",
+    "@testing-library/react": "^14.1.2",
+    "@types/react": "^18.2.47",
+    "@types/react-dom": "^18.2.18"
+  }
+}
