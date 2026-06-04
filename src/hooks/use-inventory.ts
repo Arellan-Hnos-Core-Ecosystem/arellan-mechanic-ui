@@ -10,7 +10,9 @@ export function useInventoryList() {
     queryKey: ["inventory"],
     queryFn: async () => {
       const { data } = await api.get("/inventory");
-      return data;
+      if (Array.isArray(data)) return data;
+      if (data && typeof data === "object" && Array.isArray((data as any).data)) return (data as any).data;
+      return [];
     },
     staleTime: 60000,
     retry: 2,

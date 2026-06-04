@@ -81,7 +81,7 @@ export function useUpdateStatus() {
         });
         return { offline: true };
       }
-      const { data } = await api.patch(`/orders/${orderId}/status`, {
+      const { data } = await api.post(`/orders/${orderId}/status`, {
         status,
         notes,
       });

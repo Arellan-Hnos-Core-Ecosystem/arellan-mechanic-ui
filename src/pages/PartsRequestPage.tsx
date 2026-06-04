@@ -38,7 +38,8 @@ export default function PartsRequestPage() {
 
   const { data: rawOrders, isLoading: ordersLoading } = useMyOrders();
   const orders = rawOrders ?? [];
-  const { data: inventory, isLoading: inventoryLoading } = useInventoryList();
+  const { data: inventoryRaw, isLoading: inventoryLoading } = useInventoryList();
+  const inventory = Array.isArray(inventoryRaw) ? inventoryRaw : (Array.isArray((inventoryRaw as any)?.data) ? (inventoryRaw as any).data : []);
   const requestParts = useRequestParts();
   const [toast, setToast] = useState<{
     variant: "success" | "error";
@@ -71,7 +72,7 @@ export default function PartsRequestPage() {
   );
 
   const selectedItem = useMemo(
-    () => inventory?.find((i) => i.id === selectedItemId),
+    () => inventory?.find((i: { id: string }) => i.id === selectedItemId),
     [inventory, selectedItemId]
   );
 
@@ -136,6 +137,7 @@ export default function PartsRequestPage() {
                   name="orderId"
                   render={({ field }) => (
                     <Select
+                      id="orden-de-trabajo"
                       value={field.value}
                       onChange={(e) => field.onChange(e.target.value)}
                       className="h-14"
@@ -143,7 +145,7 @@ export default function PartsRequestPage() {
                         { value: "", label: "Seleccionar OT...", disabled: true },
                         ...activeOrders.map((order) => ({
                           value: order.id,
-                          label: `${order.vehiclePlate} - ${order.vehicleModel} (#${order.id.slice(0, 6)})`,
+                          label: `[${order.vehiclePlate}] ${order.vehicleModel} (#${order.id.slice(0, 6)})`,
                         })),
                       ]}
                     />
@@ -171,14 +173,15 @@ export default function PartsRequestPage() {
                   name="itemId"
                   render={({ field }) => (
                     <Select
+                      id="repuesto"
                       value={field.value}
                       onChange={(e) => field.onChange(e.target.value)}
                       className="h-14"
                       options={[
                         { value: "", label: "Seleccionar repuesto...", disabled: true },
-                        ...inventory.map((item) => ({
+                        ...inventory.map((item: { id: string; name: string; code: string; stock: number; unitPrice: number }) => ({
                           value: item.id,
-                          label: `${item.name} (${item.code}) - Stock: ${item.stock} - S/${item.unitPrice.toFixed(2)}`,
+                          label: `${item.name} (${item.code}) - Stock: ${item.stock} - S/${Number(item.unitPrice || 0).toFixed(2)}`,
                           disabled: item.stock <= 0,
                         })),
                       ]}
@@ -200,8 +203,9 @@ export default function PartsRequestPage() {
               </div>
             )}
 
-            <FormField label="Cantidad" error={errors.quantity?.message}>
+            <FormField label="Cantidad" error={errors.quantity?.message || (selectedItem && quantity > selectedItem.stock ? "Solo esta disponible desde 1 unidad hasta el stock existente" : undefined)}>
               <Input
+                id="cantidad"
                 {...register("quantity", { valueAsNumber: true })}
                 type="number"
                 placeholder="0"
@@ -236,12 +240,10 @@ export default function PartsRequestPage() {
         )}
 
         {/* Submit */}
-        <Button
+        <button
           type="submit"
-          variant="primary"
-          size="lg"
-          className="w-full h-14 text-lg"
-          disabled={requestParts.isPending || !selectedOrderId || !selectedItemId || !quantity}
+          disabled={requestParts.isPending || !selectedOrderId || !selectedItemId || !quantity || (selectedItem && quantity > selectedItem.stock)}
+          className="w-full h-14 text-lg font-semibold rounded-lg bg-slate-700 text-white hover:bg-slate-800 active:bg-slate-900 transition-colors flex items-center justify-center shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {requestParts.isPending ? (
             <span className="flex items-center gap-2">
@@ -250,7 +252,7 @@ export default function PartsRequestPage() {
           ) : (
             "Enviar Solicitud"
           )}
-        </Button>
+        </button>
       </form>
 
       {toast && (

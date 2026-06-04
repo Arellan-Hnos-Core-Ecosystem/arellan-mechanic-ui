@@ -1,4 +1,5 @@
 import { useRef, useCallback, useState, useEffect } from "react"
+import { useQueryClient } from "@tanstack/react-query"
 import { io, type Socket } from "socket.io-client"
 
 const WS_URL =
@@ -19,9 +20,13 @@ export interface MechanicProgressData {
 export function useMechanicProgress(token: string, mechanicId: string, mechanicName: string) {
   const socketRef = useRef<Socket | null>(null)
   const [connected, setConnected] = useState(false)
+  const mountedRef = useRef(true)
+  const queryClient = useQueryClient()
 
   useEffect(() => {
-    if (!token) return
+    mountedRef.current = true
+
+    if (!token || token.length < 10) return
 
     const socket = io(WS_URL, {
       auth: { token },
@@ -29,36 +34,44 @@ export function useMechanicProgress(token: string, mechanicId: string, mechanicN
       reconnection: true,
       reconnectionAttempts: 5,
       reconnectionDelay: 2000,
+      timeout: 10000,
     })
 
     socket.on("connect", () => {
+      if (!mountedRef.current) return
       setConnected(true)
-      socket.emit("order:subscribe")
     })
 
-    socket.on("disconnect", () => {
-      setConnected(false)
-    })
+    const onDisconnect = () => { if (mountedRef.current) setConnected(false) }
+    const onError = () => { if (mountedRef.current) setConnected(false) }
+    socket.on("disconnect", onDisconnect)
+    socket.on("connect_error", onError)
 
     socketRef.current = socket
 
     return () => {
-      socket.removeAllListeners()
-      socket.disconnect()
-      socketRef.current = null
+      mountedRef.current = false
+      socket.off("connect")
+      socket.off("disconnect", onDisconnect)
+      socket.off("connect_error", onError)
     }
   }, [token])
 
   const sendProgress = useCallback(
     (data: Omit<MechanicProgressData, "mechanicId" | "mechanicName">) => {
-      socketRef.current?.emit("mechanic:progress", {
+      if (!socketRef.current?.connected) return
+      socketRef.current.emit("mechanic:progress", {
         ...data,
         mechanicId,
         mechanicName,
         timestamp: new Date().toISOString(),
       })
+      if (data.orderId) {
+        queryClient.invalidateQueries({ queryKey: ["orders", data.orderId] })
+      }
+      queryClient.invalidateQueries({ queryKey: ["orders"] })
     },
-    [mechanicId, mechanicName],
+    [mechanicId, mechanicName, queryClient],
   )
 
   return { connected, sendProgress }

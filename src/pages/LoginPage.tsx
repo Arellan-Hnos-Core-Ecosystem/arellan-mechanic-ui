@@ -3,8 +3,26 @@ import { useNavigate } from "react-router-dom";
 import { Card, CardHeader, CardContent, CardFooter, Button, Input, Spinner, Toast } from "@arellan-hnos-core-ecosystem/ui";
 import { useAuthStore } from "@/stores/auth";
 
-const DIGITS = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "Borrar", "0", "Entrar"];
+const DIGITS = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "delete", "0", "enter"] as const;
 const PIN_LENGTH = 6;
+
+function BackspaceIcon() {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M21 4H8l-7 8 7 8h13a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2z" />
+      <line x1="18" y1="9" x2="12" y2="15" />
+      <line x1="12" y1="9" x2="18" y2="15" />
+    </svg>
+  );
+}
+
+function CheckIcon() {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <polyline points="20 6 9 17 4 12" />
+    </svg>
+  );
+}
 
 export default function LoginPage() {
   const [pin, setPin] = useState("");
@@ -30,9 +48,9 @@ export default function LoginPage() {
     (digit: string) => {
       if (isLoading) return;
 
-      if (digit === "Borrar") {
+      if (digit === "delete") {
         setPin((prev) => prev.slice(0, -1));
-      } else if (digit === "Entrar") {
+      } else if (digit === "enter") {
         if (pin.length === PIN_LENGTH) {
           login(pin).then((ok) => {
             if (ok) navigate("/dashboard", { replace: true });
@@ -44,6 +62,8 @@ export default function LoginPage() {
     },
     [pin, isLoading, login, navigate]
   );
+
+  const pinComplete = pin.length === PIN_LENGTH;
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-[#1B3A6B] to-[#0F2440] p-4">
@@ -82,20 +102,53 @@ export default function LoginPage() {
 
           <div className="grid grid-cols-3 gap-2">
             {DIGITS.map((digit) => {
-              const isSpecial = digit === "Borrar" || digit === "Entrar";
-              const isEnter = digit === "Entrar";
-              const isDelete = digit === "Borrar";
+              const isDelete = digit === "delete";
+              const isEnter = digit === "enter";
+
+              if (isDelete) {
+                return (
+                  <Button
+                    key="delete"
+                    variant="outline"
+                    size="lg"
+                    className="h-14 flex items-center justify-center text-red-600 border-red-200 hover:bg-red-50 hover:border-red-300 active:bg-red-100"
+                    onClick={() => handleDigit("delete")}
+                    disabled={isLoading}
+                    aria-label="Borrar digito"
+                  >
+                    <BackspaceIcon />
+                  </Button>
+                );
+              }
+
+              if (isEnter) {
+                return (
+                  <button
+                    key="enter"
+                    type="button"
+                    onClick={() => handleDigit("enter")}
+                    disabled={isLoading || !pinComplete}
+                    aria-label="Ingresar PIN"
+                    className={`h-14 flex items-center justify-center rounded-lg text-lg font-bold transition-colors min-h-[56px] ${
+                      pinComplete
+                        ? "bg-green-600 text-white hover:bg-green-700 active:bg-green-800 shadow-sm"
+                        : "bg-gray-200 text-gray-400 cursor-not-allowed"
+                    }`}
+                  >
+                    <CheckIcon />
+                  </button>
+                );
+              }
 
               return (
                 <Button
                   key={digit}
-                  variant={isEnter ? "primary" : isDelete ? "secondary" : "outline"}
+                  variant="outline"
                   size="lg"
-                  className={`h-14 text-lg font-semibold ${
-                    isEnter && pin.length < PIN_LENGTH ? "opacity-50" : ""
-                  } ${isDelete ? "text-sm" : ""}`}
+                  className="h-14 text-lg font-semibold flex items-center justify-center"
                   onClick={() => handleDigit(digit)}
-                  disabled={isLoading || (isEnter && pin.length < PIN_LENGTH)}
+                  disabled={isLoading}
+                  aria-label={`Digito ${digit}`}
                 >
                   {digit}
                 </Button>

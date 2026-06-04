@@ -1,19 +1,14 @@
 import { useState, useRef, useEffect } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
 import {
-  Container,
-  Card,
-  CardHeader,
-  CardContent,
-  Button,
-  Input,
-  Spinner,
-  Toast,
-  FormField,
+  Container, Card, CardHeader, CardContent, Button,
+  Input, Spinner, Toast, FormField,
 } from "@arellan-hnos-core-ecosystem/ui";
 
 export default function PhotoUploadPage() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [searchParams] = useSearchParams();
   const orderId = searchParams.get("orderId");
   const [preview, setPreview] = useState<string | null>(null);
@@ -107,16 +102,19 @@ export default function PhotoUploadPage() {
       if (orderId) formData.append("orderId", orderId);
 
       const { default: api } = await import("@/lib/api");
-      await api.post("/photos/upload", formData, {
+      await api.post(`/orders/${orderId || "0"}/photos`, formData, {
         headers: { "Content-Type": "multipart/form-data" },
       });
 
       setToast({ variant: "success", message: "Foto subida exitosamente" });
-      setPreview(null);
-      setDescription("");
 
       if (orderId) {
-        setTimeout(() => navigate(`/orders/${orderId}`), 1200);
+        queryClient.invalidateQueries({ queryKey: ["orders", orderId] });
+        queryClient.invalidateQueries({ queryKey: ["orders"] });
+        navigate(`/orders/${orderId}`, { replace: true });
+      } else {
+        setPreview(null);
+        setDescription("");
       }
     } catch {
       setToast({ variant: "error", message: "Error al subir la foto" });
@@ -180,28 +178,26 @@ export default function PhotoUploadPage() {
                 </div>
               </div>
             ) : (
-              <Button
-                variant="primary"
-                size="lg"
-                className="w-full h-14"
+              <button
+                type="button"
                 onClick={startCamera}
+                className="w-full h-14 rounded-lg bg-blue-600 text-white text-base font-semibold hover:bg-blue-700 active:bg-blue-800 transition-colors flex items-center justify-center gap-2"
               >
-                📷 Abrir Cámara
-              </Button>
+                📷 Abrir Camara
+              </button>
             )}
 
             <canvas ref={canvasRef} className="hidden" />
 
             <div className="text-center text-sm text-gray-400">o</div>
 
-            <Button
-              variant="secondary"
-              size="lg"
-              className="w-full h-14"
+            <button
+              type="button"
               onClick={() => fileInputRef.current?.click()}
+              className="w-full h-14 rounded-lg bg-slate-200 text-slate-800 border border-slate-300 text-base font-semibold hover:bg-slate-300 active:bg-slate-400 transition-colors flex items-center justify-center gap-2"
             >
               📁 Subir desde archivo
-            </Button>
+            </button>
 
             <input
               ref={fileInputRef}
@@ -237,20 +233,18 @@ export default function PhotoUploadPage() {
               </FormField>
 
               <div className="flex gap-2">
-                <Button
-                  variant="secondary"
-                  size="lg"
-                  className="flex-1 h-14"
+                <button
+                  type="button"
                   onClick={() => setPreview(null)}
+                  className="flex-1 h-14 rounded-lg bg-gray-200 text-gray-700 font-semibold hover:bg-gray-300 active:bg-gray-400 transition-colors flex items-center justify-center"
                 >
                   Descartar
-                </Button>
-                <Button
-                  variant="primary"
-                  size="lg"
-                  className="flex-1 h-14"
+                </button>
+                <button
+                  type="button"
                   onClick={handleUpload}
                   disabled={uploading}
+                  className="flex-1 h-14 rounded-lg bg-blue-600 text-white font-semibold hover:bg-blue-700 active:bg-blue-800 transition-colors flex items-center justify-center disabled:opacity-50"
                 >
                   {uploading ? (
                     <span className="flex items-center gap-2">
@@ -259,7 +253,7 @@ export default function PhotoUploadPage() {
                   ) : (
                     "Subir Foto"
                   )}
-                </Button>
+                </button>
               </div>
             </CardContent>
           </Card>

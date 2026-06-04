@@ -72,22 +72,20 @@ export default function DashboardPage() {
       <main className="px-4 py-4 space-y-4">
         {/* Quick Actions */}
         <div className="grid grid-cols-2 gap-3">
-          <Button
-            variant="primary"
-            size="lg"
-            className="h-16 text-base"
+          <button
+            type="button"
             onClick={() => navigate("/vehicle-intake")}
+            className="h-16 text-base font-semibold rounded-lg bg-blue-600 text-white hover:bg-blue-700 active:bg-blue-800 shadow-sm transition-colors flex items-center justify-center"
           >
-            + Ingreso de Vehículo
-          </Button>
-          <Button
-            variant="secondary"
-            size="lg"
-            className="h-16 text-base"
+            + Ingreso de Vehiculo
+          </button>
+          <button
+            type="button"
             onClick={() => navigate("/parts-request")}
+            className="h-16 text-base font-semibold rounded-lg bg-slate-700 text-white hover:bg-slate-800 active:bg-slate-900 shadow-sm transition-colors flex items-center justify-center"
           >
             Solicitar Repuestos
-          </Button>
+          </button>
         </div>
 
         {/* Orders Section */}
@@ -131,11 +129,8 @@ export default function DashboardPage() {
                   <div className="flex items-start justify-between mb-2">
                     <div>
                       <p className="font-bold text-lg text-gray-900">
-                        {order.vehiclePlate}
-                      </p>
-                      <p className="text-sm text-gray-500">
-                        {order.vehicleModel}
-                      </p>
+                      [{order.vehiclePlate}] {order.vehicleModel}
+                    </p>
                     </div>
                     <OrderStatusBadge status={order.status} />
                   </div>

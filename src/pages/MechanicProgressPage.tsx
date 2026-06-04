@@ -132,6 +132,8 @@ export default function MechanicProgressPage() {
               <span className="text-3xl font-bold text-[#1B3A6B]">{progress}%</span>
               <div className="flex-1">
                 <input
+                  id="progress-slider"
+                  name="progress"
                   type="range"
                   min={0}
                   max={100}
@@ -219,6 +221,8 @@ export default function MechanicProgressPage() {
           </CardHeader>
           <CardContent className="p-4 pt-0">
             <textarea
+              id="progress-notes"
+              name="notes"
               className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#1B3A6B] focus:border-transparent"
               rows={3}
               placeholder="Ej: Se cambio la bomba de agua, falta ajustar la faja..."

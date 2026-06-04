@@ -7,6 +7,7 @@ import MechanicProgressPage from "@/pages/MechanicProgressPage";
 import VehicleIntakePage from "@/pages/VehicleIntakePage";
 import PartsRequestPage from "@/pages/PartsRequestPage";
 import PhotoUploadPage from "@/pages/PhotoUploadPage";
+import CheckInPage from "@/pages/CheckInPage";
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const checkSession = useAuthStore((s) => s.checkSession);
@@ -73,6 +74,14 @@ export default function App() {
         element={
           <ProtectedRoute>
             <MechanicProgressPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/check-in"
+        element={
+          <ProtectedRoute>
+            <CheckInPage />
           </ProtectedRoute>
         }
       />

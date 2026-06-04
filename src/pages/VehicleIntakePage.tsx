@@ -169,22 +169,21 @@ export default function VehicleIntakePage() {
             <FormField label="Placa del vehículo" error={errors.plate?.message}>
               <div className="flex gap-2">
                 <Input
+                  id="placa-del-vehiculo"
                   {...register("plate")}
                   placeholder="ABC123"
                   className="flex-1 uppercase text-lg font-mono tracking-wider text-center h-14"
                   maxLength={7}
                   autoCapitalize="characters"
                 />
-                <Button
+                <button
                   type="button"
-                  variant="secondary"
-                  size="lg"
-                  className="h-14"
                   onClick={simulateOcr}
                   disabled={ocrSimulating}
+                  className="h-14 px-4 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 active:bg-blue-800 transition-colors flex items-center justify-center min-w-[96px]"
                 >
                   {ocrSimulating ? <Spinner size="sm" /> : "Escanear"}
-                </Button>
+                </button>
               </div>
             </FormField>
           </CardContent>
@@ -198,6 +197,7 @@ export default function VehicleIntakePage() {
               error={errors.kilometerReading?.message}
             >
               <Input
+                id="kilometraje-actual"
                 {...register("kilometerReading", { valueAsNumber: true })}
                 type="number"
                 placeholder="0"
@@ -212,6 +212,7 @@ export default function VehicleIntakePage() {
                 name="fuelLevel"
                 render={({ field }) => (
                   <Select
+                    id="nivel-de-combustible"
                     value={field.value || ""}
                     onChange={(e) => field.onChange(e.target.value)}
                     className="h-14"
@@ -234,6 +235,7 @@ export default function VehicleIntakePage() {
               error={errors.description?.message}
             >
               <Input
+                id="descripcion-del-trabajo"
                 {...register("description")}
                 placeholder="Describa el trabajo a realizar..."
                 className="text-base h-14"
@@ -313,12 +315,10 @@ export default function VehicleIntakePage() {
         </Card>
 
         {/* Submit */}
-        <Button
+        <button
           type="submit"
-          variant="primary"
-          size="lg"
-          className="w-full h-14 text-lg"
           disabled={checkin.isPending}
+          className="w-full h-14 text-lg font-semibold rounded-lg bg-green-600 text-white hover:bg-green-700 active:bg-green-800 transition-colors flex items-center justify-center shadow-sm"
         >
           {checkin.isPending ? (
             <span className="flex items-center gap-2">
@@ -327,7 +327,7 @@ export default function VehicleIntakePage() {
           ) : (
             "Guardar Ingreso"
           )}
-        </Button>
+        </button>
       </form>
 
       {toast && (
