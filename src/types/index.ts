@@ -26,7 +26,8 @@ export interface Mechanic {
 
 export interface AuthState {
   mechanic: Mechanic | null;
-  token: string | null;
+  accessToken: string | null;
+  refreshToken: string | null;
   sessionExpiresAt: number | null;
 }
 

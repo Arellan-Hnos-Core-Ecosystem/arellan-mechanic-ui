@@ -24,7 +24,8 @@ export default function DashboardPage() {
   const { mechanic, logout, resetInactivityTimer } = useAuthStore();
   const isOnline = useOfflineStore((s) => s.isOnline);
   const queueSize = useOfflineStore((s) => s.queue.length);
-  const { data: orders, isLoading, error } = useMyOrders();
+  const { data: rawOrders, isLoading, error } = useMyOrders();
+  const orders: Order[] = Array.isArray(rawOrders) ? rawOrders : [];
 
   const handleActivity = useCallback(() => resetInactivityTimer(), [resetInactivityTimer]);
 
@@ -142,12 +143,12 @@ export default function DashboardPage() {
                     {order.description}
                   </p>
                   <div className="flex items-center gap-2 mt-3 text-xs text-gray-400">
-                    <span>OT #{order.id.slice(0, 8)}</span>
-                    {order.partsUsed.length > 0 && (
-                      <span>· {order.partsUsed.length} repuestos</span>
+                    <span>OT #{order.id?.slice(0, 8)}</span>
+                    {(order.partsUsed?.length ?? 0) > 0 && (
+                      <span>· {order.partsUsed?.length ?? 0} repuestos</span>
                     )}
-                    {order.photos.length > 0 && (
-                      <span>· {order.photos.length} fotos</span>
+                    {(order.photos?.length ?? 0) > 0 && (
+                      <span>· {order.photos?.length ?? 0} fotos</span>
                     )}
                   </div>
                 </CardContent>

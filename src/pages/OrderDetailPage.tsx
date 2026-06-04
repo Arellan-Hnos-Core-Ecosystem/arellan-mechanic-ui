@@ -139,7 +139,7 @@ export default function OrderDetailPage() {
           </CardHeader>
           <CardContent className="p-4 pt-0">
             <div className="space-y-3">
-              {order.timeline.map((entry, idx) => (
+              {(order.timeline ?? []).map((entry, idx) => (
                 <div key={entry.id} className="flex gap-3">
                   <div className="flex flex-col items-center">
                     <div
@@ -147,7 +147,7 @@ export default function OrderDetailPage() {
                         idx === 0 ? "bg-[#1B3A6B]" : "bg-gray-300"
                       }`}
                     />
-                    {idx < order.timeline.length - 1 && (
+                    {idx < (order.timeline?.length ?? 0) - 1 && (
                       <div className="w-0.5 flex-1 bg-gray-200 mt-1" />
                     )}
                   </div>
@@ -170,14 +170,14 @@ export default function OrderDetailPage() {
         </Card>
 
         {/* Checklist */}
-        {order.checklist.length > 0 && (
+        {(order.checklist ?? []).length > 0 && (
           <Card>
             <CardHeader>
-              <h2 className="text-base font-semibold">Lista de Verificación</h2>
+              <h2 className="text-base font-semibold">Lista de Verificacion</h2>
             </CardHeader>
             <CardContent className="p-4 pt-0">
               <div className="space-y-2">
-                {order.checklist.map((item) => (
+                {(order.checklist ?? []).map((item) => (
                   <div
                     key={item.id}
                     className="flex items-center gap-3 p-2 rounded bg-gray-50"
@@ -202,14 +202,14 @@ export default function OrderDetailPage() {
         )}
 
         {/* Parts Used */}
-        {order.partsUsed.length > 0 && (
+        {(order.partsUsed ?? []).length > 0 && (
           <Card>
             <CardHeader>
               <h2 className="text-base font-semibold">Repuestos Utilizados</h2>
             </CardHeader>
             <CardContent className="p-4 pt-0">
               <div className="space-y-2">
-                {order.partsUsed.map((part) => (
+                {(order.partsUsed ?? []).map((part) => (
                   <div
                     key={part.id}
                     className="flex items-center justify-between p-2 rounded bg-gray-50"
@@ -232,16 +232,16 @@ export default function OrderDetailPage() {
         )}
 
         {/* Photos */}
-        {order.photos.length > 0 && (
+        {(order.photos ?? []).length > 0 && (
           <Card>
             <CardHeader>
               <h2 className="text-base font-semibold">
-                Fotos ({order.photos.length})
+                Fotos ({(order.photos ?? []).length})
               </h2>
             </CardHeader>
             <CardContent className="p-4 pt-0">
               <div className="grid grid-cols-2 gap-2">
-                {order.photos.map((photo) => (
+                {(order.photos ?? []).map((photo) => (
                   <div key={photo.id} className="relative">
                     <img
                       src={photo.url}
@@ -262,6 +262,14 @@ export default function OrderDetailPage() {
         {/* Action Buttons */}
         <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 p-3 space-y-2">
           <div className="flex gap-2">
+            <Button
+              variant="secondary"
+              size="lg"
+              className="flex-1 h-14"
+              onClick={() => navigate(`/orders/${order.id}/progress`)}
+            >
+              Reportar Avance
+            </Button>
             <Button
               variant="secondary"
               size="lg"

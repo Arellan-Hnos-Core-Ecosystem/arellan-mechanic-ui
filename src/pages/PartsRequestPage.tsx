@@ -36,7 +36,8 @@ export default function PartsRequestPage() {
   const [searchParams] = useSearchParams();
   const preselectedOrderId = searchParams.get("orderId") || undefined;
 
-  const { data: orders, isLoading: ordersLoading } = useMyOrders();
+  const { data: rawOrders, isLoading: ordersLoading } = useMyOrders();
+  const orders = rawOrders ?? [];
   const { data: inventory, isLoading: inventoryLoading } = useInventoryList();
   const requestParts = useRequestParts();
   const [toast, setToast] = useState<{

@@ -4,6 +4,11 @@ import type { Order } from "@/types";
 import { useOfflineStore } from "@/stores/offline";
 import { useAuthStore } from "@/stores/auth";
 
+export interface PaginatedOrders {
+  data: Order[];
+  nextCursor: string | null;
+}
+
 function useOfflineFallback<T>(key: string[], fn: () => Promise<T>) {
   const isOnline = useOfflineStore((s) => s.isOnline);
   const queryClient = useQueryClient();
@@ -23,12 +28,28 @@ function useOfflineFallback<T>(key: string[], fn: () => Promise<T>) {
   });
 }
 
+function extractOrders(raw: unknown): Order[] {
+  if (Array.isArray(raw)) return raw;
+  if (raw && typeof raw === "object") {
+    const obj = raw as Record<string, unknown>;
+    if (Array.isArray(obj.data)) return obj.data as Order[];
+    if (Array.isArray(obj.orders)) return obj.orders as Order[];
+  }
+  return [];
+}
+
 export function useMyOrders() {
   const mechanicId = useAuthStore((s) => s.mechanic?.id);
 
-  return useOfflineFallback<Order[]>(["orders", "my", mechanicId ?? ""], async () => {
-    const { data } = await api.get("/orders/assigned");
-    return data;
+  return useQuery<Order[]>({
+    queryKey: ["orders", "my", mechanicId ?? ""],
+    queryFn: async () => {
+      const { data } = await api.get("/orders/my");
+      return extractOrders(data);
+    },
+    staleTime: 30000,
+    retry: 2,
+    refetchInterval: 30000,
   });
 }
 

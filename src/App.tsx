@@ -3,6 +3,7 @@ import { useAuthStore } from "@/stores/auth";
 import LoginPage from "@/pages/LoginPage";
 import DashboardPage from "@/pages/DashboardPage";
 import OrderDetailPage from "@/pages/OrderDetailPage";
+import MechanicProgressPage from "@/pages/MechanicProgressPage";
 import VehicleIntakePage from "@/pages/VehicleIntakePage";
 import PartsRequestPage from "@/pages/PartsRequestPage";
 import PhotoUploadPage from "@/pages/PhotoUploadPage";
@@ -64,6 +65,14 @@ export default function App() {
         element={
           <ProtectedRoute>
             <PhotoUploadPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/orders/:id/progress"
+        element={
+          <ProtectedRoute>
+            <MechanicProgressPage />
           </ProtectedRoute>
         }
       />
