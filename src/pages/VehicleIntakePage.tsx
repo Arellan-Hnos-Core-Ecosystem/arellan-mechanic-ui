@@ -1,8 +1,9 @@
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
+import Tesseract from "tesseract.js";
 import {
   Container,
   Card,
@@ -18,13 +19,19 @@ import {
 } from "@arellan-hnos-core-ecosystem/ui";
 import { useVehicleCheckin } from "@/hooks/use-orders";
 
-const PERU_PLATE_REGEX = /^[A-Z]{1,3}\d{3,4}$/;
+const PERU_PLATE_REGEX = /^[A-Z][A-Z0-9]{2}-?\d{3}$/i;
 
 const schema = z.object({
   plate: z
     .string()
     .min(1, "La placa es obligatoria")
-    .regex(PERU_PLATE_REGEX, "Formato inválido (ej: ABC123)"),
+    .regex(PERU_PLATE_REGEX, "Formato inválido. Use ABC123 o ABC-123"),
+  brand: z
+    .string()
+    .min(1, "La marca es obligatoria"),
+  model: z
+    .string()
+    .min(1, "El modelo es obligatorio"),
   kilometerReading: z
     .number({ invalid_type_error: "Debe ser un número" })
     .min(0, "No puede ser negativo")
@@ -62,8 +69,13 @@ export default function VehicleIntakePage() {
     variant: "success" | "error";
     message: string;
   } | null>(null);
-  const [ocrSimulating, setOcrSimulating] = useState(false);
+  const [scannerOpen, setScannerOpen] = useState(false);
+  const [capturing, setCapturing] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const streamRef = useRef<MediaStream | null>(null);
   const [activePhotoPosition, setActivePhotoPosition] = useState<string | null>(null);
 
   const {
@@ -76,20 +88,113 @@ export default function VehicleIntakePage() {
     resolver: zodResolver(schema),
     defaultValues: {
       plate: "",
+      brand: "",
+      model: "",
       fuelLevel: undefined,
       description: "",
     },
   });
 
-  const simulateOcr = useCallback(async () => {
-    setOcrSimulating(true);
-    // Simulate OCR delay
-    await new Promise((r) => setTimeout(r, 1500));
-    setOcrSimulating(false);
-    setToast({
-      variant: "success",
-      message: "Placa no detectada. Ingrese manualmente.",
-    });
+  const openScanner = useCallback(async () => {
+    try {
+      setScannerOpen(true);
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: "environment", width: { ideal: 1920 }, height: { ideal: 1080 } },
+      });
+      streamRef.current = stream;
+      setTimeout(() => {
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+        }
+      }, 150);
+    } catch {
+      setScannerOpen(false);
+      setToast({
+        variant: "error",
+        message: "No se pudo acceder a la cámara. Ingrese la placa manualmente.",
+      });
+    }
+  }, []);
+
+  const closeScanner = useCallback(() => {
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((track) => track.stop());
+      streamRef.current = null;
+    }
+    setScannerOpen(false);
+    setCapturing(false);
+  }, []);
+
+  const capturePlate = useCallback(async () => {
+    if (!videoRef.current || !canvasRef.current) return;
+    setCapturing(true);
+    setIsProcessing(true);
+
+    try {
+      const video = videoRef.current;
+      const canvas = canvasRef.current;
+
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) throw new Error("No se pudo obtener contexto 2D");
+
+      ctx.drawImage(video, 0, 0);
+
+      const guideWidth = 280;
+      const guideHeight = 140;
+      const sx = (canvas.width - guideWidth) / 2;
+      const sy = (canvas.height - guideHeight) / 2;
+
+      const imageData = ctx.getImageData(sx, sy, guideWidth, guideHeight);
+      const cropCanvas = document.createElement("canvas");
+      cropCanvas.width = guideWidth;
+      cropCanvas.height = guideHeight;
+      const cropCtx = cropCanvas.getContext("2d");
+      if (!cropCtx) throw new Error("No se pudo obtener contexto de recorte");
+      cropCtx.putImageData(imageData, 0, 0);
+
+      const dataUrl = cropCanvas.toDataURL("image/jpeg", 0.9);
+
+      const result = await Tesseract.recognize(dataUrl, "eng", {
+        tessedit_char_whitelist: "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-",
+      } as any);
+
+      const text = result.data.text.replace(/\s+/g, "").toUpperCase();
+      const confidence = result.data.confidence;
+
+      if (PERU_PLATE_REGEX.test(text) && confidence >= 70) {
+        setValue("plate", text, { shouldValidate: true });
+        closeScanner();
+        setToast({
+          variant: "success",
+          message: `Placa detectada: ${text}`,
+        });
+      } else {
+        closeScanner();
+        setToast({
+          variant: "error",
+          message: "⚠️ Poca visibilidad o placa no legible. Por favor, ingrésela manualmente.",
+        });
+      }
+    } catch {
+      closeScanner();
+      setToast({
+        variant: "error",
+        message: "⚠️ Poca visibilidad o placa no legible. Por favor, ingrésela manualmente.",
+      });
+    } finally {
+      setCapturing(false);
+      setIsProcessing(false);
+    }
+  }, [setValue, closeScanner]);
+
+  useEffect(() => {
+    return () => {
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach((track) => track.stop());
+      }
+    };
   }, []);
 
   const handlePhotoCapture = (position: string) => {
@@ -129,6 +234,8 @@ export default function VehicleIntakePage() {
 
     const formData = new FormData();
     formData.append("plate", data.plate.toUpperCase());
+    formData.append("brand", data.brand);
+    formData.append("model", data.model);
     formData.append("kilometerReading", String(data.kilometerReading));
     formData.append("fuelLevel", data.fuelLevel);
     formData.append("description", data.description);
@@ -178,13 +285,30 @@ export default function VehicleIntakePage() {
                 />
                 <button
                   type="button"
-                  onClick={simulateOcr}
-                  disabled={ocrSimulating}
+                  onClick={openScanner}
                   className="h-14 px-4 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 active:bg-blue-800 transition-colors flex items-center justify-center min-w-[96px]"
                 >
-                  {ocrSimulating ? <Spinner size="sm" /> : "Escanear"}
+                  Escanear
                 </button>
               </div>
+            </FormField>
+
+            <FormField label="Marca del vehículo" error={errors.brand?.message}>
+              <Input
+                id="marca-del-vehiculo"
+                {...register("brand")}
+                placeholder="Toyota"
+                className="text-lg h-14"
+              />
+            </FormField>
+
+            <FormField label="Modelo del vehículo" error={errors.model?.message}>
+              <Input
+                id="modelo-del-vehiculo"
+                {...register("model")}
+                placeholder="Hiace"
+                className="text-lg h-14"
+              />
             </FormField>
           </CardContent>
         </Card>
@@ -333,6 +457,62 @@ export default function VehicleIntakePage() {
       {toast && (
         <div className="fixed bottom-4 left-4 right-4 flex justify-center">
           <Toast variant={toast.variant} message={toast.message} />
+        </div>
+      )}
+
+      {scannerOpen && (
+        <div className="fixed inset-0 z-50 bg-black/90 flex flex-col items-center justify-center">
+          <video
+            ref={videoRef}
+            autoPlay
+            playsInline
+            muted
+            className="absolute inset-0 w-full h-full object-cover"
+          />
+          <canvas ref={canvasRef} className="hidden" />
+
+          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+            <div className="w-[280px] h-[140px] border-4 border-green-400 rounded-lg opacity-70 shadow-[0_0_30px_rgba(74,222,128,0.5)]" />
+          </div>
+
+          <p className="absolute top-[25%] left-0 right-0 text-center text-white text-lg font-semibold drop-shadow-lg">
+            Guía de Enfoque de Placa
+          </p>
+
+          <div className="absolute bottom-12 left-0 right-0 flex flex-col items-center gap-4 px-6">
+            {isProcessing && (
+              <div className="flex items-center gap-3 bg-black/60 backdrop-blur-sm rounded-full px-6 py-3">
+                <Spinner size="sm" />
+                <span className="text-white text-base font-medium">
+                  🔍 Analizando caracteres de la placa...
+                </span>
+              </div>
+            )}
+            <div className="flex gap-4">
+              <button
+                type="button"
+                onClick={closeScanner}
+                disabled={isProcessing}
+                className="h-14 px-8 rounded-full bg-white/20 text-white font-semibold hover:bg-white/30 active:bg-white/40 transition-colors backdrop-blur-sm disabled:opacity-30"
+              >
+                Cerrar Escáner
+              </button>
+              <button
+                type="button"
+                onClick={capturePlate}
+                disabled={capturing}
+                className="h-14 px-8 rounded-full bg-green-500 text-white font-semibold hover:bg-green-600 active:bg-green-700 transition-colors shadow-lg disabled:opacity-50"
+              >
+                {capturing ? (
+                  <span className="flex items-center gap-2">
+                    <Spinner size="sm" /> Procesando...
+                  </span>
+                ) : (
+                  "Capturar"
+                )}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </Container>

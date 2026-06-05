@@ -45,6 +45,7 @@ export default function PartsRequestPage() {
     variant: "success" | "error";
     message: string;
   } | null>(null);
+  const [confirmSend, setConfirmSend] = useState<FormData | null>(null);
 
   const {
     register,
@@ -87,7 +88,14 @@ export default function PartsRequestPage() {
     [orders]
   );
 
-  const onSubmit = async (data: FormData) => {
+  const onSubmit = (data: FormData) => {
+    setConfirmSend(data);
+  };
+
+  const handleConfirmedSend = async () => {
+    if (!confirmSend) return;
+    const data = confirmSend;
+    setConfirmSend(null);
     try {
       await requestParts.mutateAsync(data);
       setToast({
@@ -95,6 +103,14 @@ export default function PartsRequestPage() {
         message: "Solicitud de repuestos enviada",
       });
       reset({ orderId: data.orderId, itemId: "", quantity: undefined });
+
+      if (preselectedOrderId) {
+        setTimeout(() => {
+          navigate(`/orders/${data.orderId}`, { replace: true });
+        }, 3000);
+      } else {
+        navigate("/dashboard", { replace: true });
+      }
     } catch {
       setToast({
         variant: "error",
@@ -145,7 +161,7 @@ export default function PartsRequestPage() {
                         { value: "", label: "Seleccionar OT...", disabled: true },
                         ...activeOrders.map((order) => ({
                           value: order.id,
-                          label: `[${order.vehiclePlate}] ${order.vehicleModel} (#${order.id.slice(0, 6)})`,
+                          label: `[${order.vehiclePlate}] ${order.vehicleBrand || ""} ${order.vehicleModel} (#${order.id.slice(0, 6)})`,
                         })),
                       ]}
                     />
@@ -230,7 +246,7 @@ export default function PartsRequestPage() {
             <CardContent className="p-4">
               <p className="text-sm text-gray-500">Resumen de OT</p>
               <p className="font-medium">
-                {selectedOrder.vehiclePlate} - {selectedOrder.vehicleModel}
+                [{selectedOrder.vehiclePlate}] {selectedOrder.vehicleBrand || ""} {selectedOrder.vehicleModel}
               </p>
               <p className="text-sm text-gray-600 line-clamp-2">
                 {selectedOrder.description}
@@ -258,6 +274,47 @@ export default function PartsRequestPage() {
       {toast && (
         <div className="fixed bottom-4 left-4 right-4 flex justify-center">
           <Toast variant={toast.variant} message={toast.message} />
+        </div>
+      )}
+
+      {confirmSend && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm p-6">
+            <div className="flex items-center gap-3 mb-4">
+              <span className="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center text-xl">🔧</span>
+              <div>
+                <h3 className="text-lg font-bold text-gray-900">Confirmar solicitud</h3>
+                <p className="text-sm text-gray-500">Esta acción descuenta del inventario</p>
+              </div>
+            </div>
+            <p className="text-sm text-gray-600">
+              ¿Confirmas el envío de esta solicitud de repuestos al inventario?
+            </p>
+            <div className="mt-6 flex gap-3 justify-end">
+              <button
+                type="button"
+                onClick={() => setConfirmSend(null)}
+                disabled={requestParts.isPending}
+                className="px-4 py-2.5 rounded-lg bg-gray-200 text-gray-700 font-semibold text-sm hover:bg-gray-300 active:bg-gray-400 transition-colors min-h-[44px]"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmedSend}
+                disabled={requestParts.isPending}
+                className="px-4 py-2.5 rounded-lg bg-slate-700 text-white font-semibold text-sm hover:bg-slate-800 active:bg-slate-900 transition-colors min-h-[44px] disabled:opacity-50"
+              >
+                {requestParts.isPending ? (
+                  <span className="flex items-center gap-2">
+                    <Spinner size="sm" /> Enviando...
+                  </span>
+                ) : (
+                  "Si, enviar"
+                )}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </Container>

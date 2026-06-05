@@ -42,8 +42,7 @@ export function useRequestParts() {
         return { offline: true };
       }
       const { data } = await api.post(`/orders/${orderId}/parts`, {
-        itemId,
-        quantity,
+        items: [{ itemId, quantity }],
       });
       return data;
     },

@@ -57,8 +57,10 @@ export default function MechanicProgressPage() {
       notes: notes.trim() || undefined,
     });
     setSent(true);
-    setTimeout(() => setSent(false), 2500);
-  }, [order, sendProgress, progress, partsInstalled, laborHours, notes]);
+    setTimeout(() => {
+      navigate(`/orders/${order.id}`);
+    }, 1200);
+  }, [order, navigate, sendProgress, progress, partsInstalled, laborHours, notes]);
 
   if (isLoading) {
     return (
@@ -99,7 +101,7 @@ export default function MechanicProgressPage() {
           </Button>
           <div>
             <h1 className="text-lg font-bold">Reportar Avance</h1>
-            <p className="text-sm opacity-80">{order.vehiclePlate} · {order.vehicleModel}</p>
+            <p className="text-sm opacity-80">{order.vehiclePlate} · {order.vehicleBrand || ""} {order.vehicleModel}</p>
           </div>
           {connected && (
             <span className="ml-auto flex items-center gap-1 text-xs text-green-300">

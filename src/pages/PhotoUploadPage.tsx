@@ -14,6 +14,7 @@ export default function PhotoUploadPage() {
   const [preview, setPreview] = useState<string | null>(null);
   const [description, setDescription] = useState("");
   const [uploading, setUploading] = useState(false);
+  const [confirmUpload, setConfirmUpload] = useState(false);
   const [toast, setToast] = useState<{
     variant: "success" | "error";
     message: string;
@@ -90,9 +91,14 @@ export default function PhotoUploadPage() {
     reader.readAsDataURL(file);
   };
 
-  const handleUpload = async () => {
+  const handleUpload = () => {
     if (!preview) return;
+    setConfirmUpload(true);
+  };
 
+  const confirmedUpload = async () => {
+    if (!preview) return;
+    setConfirmUpload(false);
     setUploading(true);
     try {
       const blob = await (await fetch(preview)).blob();
@@ -111,7 +117,9 @@ export default function PhotoUploadPage() {
       if (orderId) {
         queryClient.invalidateQueries({ queryKey: ["orders", orderId] });
         queryClient.invalidateQueries({ queryKey: ["orders"] });
-        navigate(`/orders/${orderId}`, { replace: true });
+        setTimeout(() => {
+          navigate(`/orders/${orderId}`, { replace: true });
+        }, 3000);
       } else {
         setPreview(null);
         setDescription("");
@@ -263,6 +271,47 @@ export default function PhotoUploadPage() {
       {toast && (
         <div className="fixed bottom-4 left-4 right-4 flex justify-center">
           <Toast variant={toast.variant} message={toast.message} />
+        </div>
+      )}
+
+      {confirmUpload && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm p-6">
+            <div className="flex items-center gap-3 mb-4">
+              <span className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center text-xl">📷</span>
+              <div>
+                <h3 className="text-lg font-bold text-gray-900">Confirmar subida</h3>
+                <p className="text-sm text-gray-500">La foto se vinculará a la OT</p>
+              </div>
+            </div>
+            <p className="text-sm text-gray-600">
+              ¿Confirmas el guardado final de la imagen en la orden de trabajo?
+            </p>
+            <div className="mt-6 flex gap-3 justify-end">
+              <button
+                type="button"
+                onClick={() => setConfirmUpload(false)}
+                disabled={uploading}
+                className="px-4 py-2.5 rounded-lg bg-gray-200 text-gray-700 font-semibold text-sm hover:bg-gray-300 active:bg-gray-400 transition-colors min-h-[44px]"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={confirmedUpload}
+                disabled={uploading}
+                className="px-4 py-2.5 rounded-lg bg-blue-600 text-white font-semibold text-sm hover:bg-blue-700 active:bg-blue-800 transition-colors min-h-[44px] disabled:opacity-50"
+              >
+                {uploading ? (
+                  <span className="flex items-center gap-2">
+                    <Spinner size="sm" /> Subiendo...
+                  </span>
+                ) : (
+                  "Si, subir"
+                )}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </Container>

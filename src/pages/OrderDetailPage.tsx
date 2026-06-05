@@ -1,5 +1,7 @@
 import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
+import api from "@/lib/api";
 import {
   Container, Card, CardHeader, CardContent,
   Button, Badge, Spinner, OrderStatusBadge, Skeleton, StatusIndicator,
@@ -30,7 +32,10 @@ const STATUS_LABEL: Record<string, string> = {
 const EVENT_ICONS: Record<string, string> = {
   STATUS_CHANGED: "🔄",
   PART_ADDED: "🔧",
+  PART_REQUESTED: "🔧",
   PHOTO_UPLOADED: "📷",
+  PHOTO_DELETED: "🗑️",
+  PROGRESS_REPORTED: "📊",
   MECHANIC_PROGRESS: "📊",
 };
 
@@ -68,6 +73,7 @@ function translateError(err: unknown): string {
 export default function OrderDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const { data: order, isLoading, error } = useOrder(id);
   const updateStatus = useUpdateStatus();
   const [confirmAction, setConfirmAction] = useState<{
@@ -75,6 +81,9 @@ export default function OrderDetailPage() {
   } | null>(null);
   const [toast, setToast] = useState<{ message: string } | null>(null);
   const [activePhotoUrl, setActivePhotoUrl] = useState<string | null>(null);
+  const [visibleItems, setVisibleItems] = useState(5);
+  const [deletePhotoTarget, setDeletePhotoTarget] = useState<{ photoId: string; url: string } | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     if (!toast) return;
@@ -92,6 +101,27 @@ export default function OrderDetailPage() {
       setConfirmAction(null);
     } catch (err) {
       setToast({ message: translateError(err) });
+    }
+  };
+
+  const handleDeletePhoto = async () => {
+    if (!deletePhotoTarget || !order) return;
+    if (deletePhotoTarget.photoId.startsWith("legacy-")) {
+      setDeletePhotoTarget(null);
+      setToast({ message: "Foto eliminada correctamente" });
+      return;
+    }
+    setDeleting(true);
+    try {
+      await api.delete(`/orders/${order.id}/photos/${deletePhotoTarget.photoId}`);
+      queryClient.invalidateQueries({ queryKey: ["orders"] });
+      queryClient.invalidateQueries({ queryKey: ["orders", order.id] });
+      setToast({ message: "Foto eliminada correctamente" });
+      setDeletePhotoTarget(null);
+    } catch {
+      setToast({ message: "Error al eliminar la foto" });
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -121,6 +151,8 @@ export default function OrderDetailPage() {
     );
   }
 
+  const isDelivered = order.status === "DELIVERED";
+
   const availableActions = getAvailableActions(order.status);
   const safePhotos = (order as any).photos ?? (order as any).photosRel ?? [];
   const statusHistory = (order as any).timeline ?? (order as any).statusHistory ?? [];
@@ -140,7 +172,7 @@ export default function OrderDetailPage() {
           </Button>
           <div>
             <h1 className="text-lg font-bold">{order.vehiclePlate}</h1>
-            <p className="text-sm opacity-80">{order.vehicleModel}</p>
+            <p className="text-sm opacity-80">{order.vehicleBrand || ""} {order.vehicleModel}</p>
           </div>
         </div>
       </header>
@@ -168,7 +200,7 @@ export default function OrderDetailPage() {
               {fullTimeline.length === 0 && (
                 <p className="text-sm text-gray-400">Sin registros en la bitacora</p>
               )}
-              {fullTimeline.map((entry: any, idx: number) => {
+              {fullTimeline.slice(0, visibleItems).map((entry: any, idx: number) => {
                 const isHistory = "status" in entry && "changedBy" in entry;
                 const isEvent = "event" in entry;
                 const icon = isEvent ? EVENT_ICONS[entry.event] ?? "📌" : "🔄";
@@ -199,6 +231,16 @@ export default function OrderDetailPage() {
                   </div>
                 );
               })}
+              {fullTimeline.length > visibleItems && (
+                <button
+                  type="button"
+                  onClick={() => setVisibleItems((prev) => prev + 5)}
+                  className="w-full py-2.5 mt-2 rounded-lg bg-gray-100 text-sm font-medium text-[#1B3A6B] hover:bg-gray-200 active:bg-gray-300 transition-colors"
+                  style={{ minHeight: "44px" }}
+                >
+                  Ver más ({fullTimeline.length - visibleItems} restantes)
+                </button>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -254,10 +296,25 @@ export default function OrderDetailPage() {
                     : (photo.url?.startsWith("http") || photo.url?.startsWith("data:") ? photo.url
                       : `http://localhost:3001${photo.url || ""}`);
                   const desc = typeof photo === "string" ? "" : (photo.description || photo.type || "");
+                  const photoId = typeof photo === "string" ? `legacy-${idx}` : (photo.id || `legacy-${idx}`);
                   return (
-                    <div key={photo.id || idx} className="relative cursor-pointer active:scale-[0.97] transition-transform" onClick={() => setActivePhotoUrl(src)}>
-                      <img src={src} alt={desc || "Foto"} className="w-full h-32 object-cover rounded-lg" loading="lazy" />
-                      {desc && <p className="text-xs text-gray-500 mt-1 truncate">{desc}</p>}
+                    <div key={photoId} className="relative group">
+                      <div className="cursor-pointer active:scale-[0.97] transition-transform" onClick={() => setActivePhotoUrl(src)}>
+                        <img src={src} alt={desc || "Foto"} className="w-full h-32 object-cover rounded-lg" loading="lazy" />
+                        {desc && <p className="text-xs text-gray-500 mt-1 truncate">{desc}</p>}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setDeletePhotoTarget({ photoId, url: src });
+                        }}
+                        className="absolute top-2 right-2 bg-red-600 text-white p-2 rounded-full shadow hover:bg-red-700 active:scale-90 transition-all"
+                        aria-label="Eliminar foto"
+                        style={{ minWidth: "34px", minHeight: "34px" }}
+                      >
+                        🗑
+                      </button>
                     </div>
                   );
                 })}
@@ -266,36 +323,47 @@ export default function OrderDetailPage() {
           </Card>
         )}
 
-        <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 p-3 space-y-2">
-          <div className="flex gap-2">
-            <button type="button" onClick={() => navigate(`/orders/${order.id}/progress`)}
-              className="flex-1 h-14 rounded-lg bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 active:bg-indigo-800 transition-colors flex items-center justify-center min-h-[56px]">
-              Reportar Avance
-            </button>
-            <button type="button" onClick={() => navigate(`/photo-upload?orderId=${order.id}`)}
-              className="flex-1 h-14 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 active:bg-blue-800 transition-colors flex items-center justify-center min-h-[56px]">
-              Agregar Foto
-            </button>
-            <button type="button" onClick={() => navigate(`/parts-request?orderId=${order.id}`)}
-              className="flex-1 h-14 rounded-lg bg-amber-600 text-white text-sm font-semibold hover:bg-amber-700 active:bg-amber-800 transition-colors flex items-center justify-center min-h-[56px]">
-              Pedir Repuestos
-            </button>
-          </div>
-          {availableActions.length > 0 && (
-            <div className="flex flex-wrap gap-2">
-              {availableActions.map((action) => (
-                <button key={action.next} type="button" onClick={() => setConfirmAction(action)} disabled={updateStatus.isPending}
-                  className={`flex-1 h-14 text-sm font-semibold rounded-lg text-white transition-colors flex items-center justify-center min-h-[56px] disabled:opacity-50 disabled:cursor-not-allowed ${
-                    action.next === "DELIVERED" ? "bg-green-600 hover:bg-green-700 active:bg-green-800"
-                    : action.next === "READY" ? "bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800"
-                    : "bg-[#1B3A6B] hover:bg-[#152E54] active:bg-[#0F2240]"
-                  }`}>
-                  {action.label}
-                </button>
-              ))}
+        {isDelivered ? (
+          <div className="fixed bottom-0 left-0 right-0 bg-amber-50 border-t border-amber-200 p-4">
+            <div className="flex items-center justify-center gap-2 text-amber-800">
+              <span className="text-lg">🔒</span>
+              <p className="text-sm font-semibold text-center">
+                Esta orden de trabajo se encuentra cerrada y entregada. Modo de solo lectura habilitado.
+              </p>
             </div>
-          )}
-        </div>
+          </div>
+        ) : (
+          <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 p-3 space-y-2">
+            <div className="flex gap-2">
+              <button type="button" onClick={() => navigate(`/orders/${order.id}/progress`)}
+                className="flex-1 h-14 rounded-lg bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 active:bg-indigo-800 transition-colors flex items-center justify-center min-h-[56px]">
+                Reportar Avance
+              </button>
+              <button type="button" onClick={() => navigate(`/photo-upload?orderId=${order.id}`)}
+                className="flex-1 h-14 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 active:bg-blue-800 transition-colors flex items-center justify-center min-h-[56px]">
+                Agregar Foto
+              </button>
+              <button type="button" onClick={() => navigate(`/parts-request?orderId=${order.id}`)}
+                className="flex-1 h-14 rounded-lg bg-amber-600 text-white text-sm font-semibold hover:bg-amber-700 active:bg-amber-800 transition-colors flex items-center justify-center min-h-[56px]">
+                Pedir Repuestos
+              </button>
+            </div>
+            {availableActions.length > 0 && (
+              <div className="flex flex-wrap gap-2">
+                {availableActions.map((action) => (
+                  <button key={action.next} type="button" onClick={() => setConfirmAction(action)} disabled={updateStatus.isPending}
+                    className={`flex-1 h-14 text-sm font-semibold rounded-lg text-white transition-colors flex items-center justify-center min-h-[56px] disabled:opacity-50 disabled:cursor-not-allowed ${
+                      action.next === "DELIVERED" ? "bg-green-600 hover:bg-green-700 active:bg-green-800"
+                      : action.next === "READY" ? "bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800"
+                      : "bg-[#1B3A6B] hover:bg-[#152E54] active:bg-[#0F2240]"
+                    }`}>
+                    {action.label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </main>
 
       {confirmAction && (
@@ -311,6 +379,31 @@ export default function OrderDetailPage() {
               <button type="button" onClick={handleStatusChange} disabled={updateStatus.isPending}
                 className="px-4 py-2.5 rounded-lg bg-emerald-600 text-white font-semibold text-sm hover:bg-emerald-700 active:bg-emerald-800 transition-colors min-h-[44px] disabled:opacity-50">
                 {updateStatus.isPending ? "Cambiando..." : "Si, cambiar"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {deletePhotoTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm p-6">
+            <div className="flex items-center gap-3 mb-4">
+              <span className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center text-xl">🗑️</span>
+              <div>
+                <h3 className="text-lg font-bold text-gray-900">Eliminar foto</h3>
+                <p className="text-sm text-gray-500">Esta acción registra un evento en la bitácora</p>
+              </div>
+            </div>
+            <p className="text-sm text-gray-600">¿Estás seguro de eliminar esta foto del vehículo?</p>
+            <div className="mt-6 flex gap-3 justify-end">
+              <button type="button" onClick={() => setDeletePhotoTarget(null)} disabled={deleting}
+                className="px-4 py-2.5 rounded-lg bg-gray-200 text-gray-700 font-semibold text-sm hover:bg-gray-300 active:bg-gray-400 transition-colors min-h-[44px]">
+                Cancelar
+              </button>
+              <button type="button" onClick={handleDeletePhoto} disabled={deleting}
+                className="px-4 py-2.5 rounded-lg bg-red-600 text-white font-semibold text-sm hover:bg-red-700 active:bg-red-800 transition-colors min-h-[44px] disabled:opacity-50">
+                {deleting ? "Eliminando..." : "Si, eliminar"}
               </button>
             </div>
           </div>

@@ -129,7 +129,7 @@ export default function DashboardPage() {
                   <div className="flex items-start justify-between mb-2">
                     <div>
                       <p className="font-bold text-lg text-gray-900">
-                      [{order.vehiclePlate}] {order.vehicleModel}
+                      [{order.vehiclePlate}] {order.vehicleBrand} {order.vehicleModel}
                     </p>
                     </div>
                     <OrderStatusBadge status={order.status} />

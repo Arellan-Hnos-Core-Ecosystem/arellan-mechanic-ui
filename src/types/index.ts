@@ -83,6 +83,7 @@ export interface OrderTimelineEntry {
 export interface Order {
   id: string;
   vehiclePlate: string;
+  vehicleBrand: string;
   vehicleModel: string;
   description: string;
   status: OrderStatus;
