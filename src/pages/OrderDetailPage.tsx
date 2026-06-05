@@ -1,22 +1,27 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
+import { io, type Socket } from "socket.io-client";
+import QRCode from "qrcode";
 import api from "@/lib/api";
 import {
   Container, Card, CardHeader, CardContent,
   Button, Badge, Spinner, OrderStatusBadge, Skeleton, StatusIndicator,
 } from "@arellan-hnos-core-ecosystem/ui";
 import { useOrder, useUpdateStatus } from "@/hooks/use-orders";
+import { useAuthStore } from "@/stores/auth";
 import type { Order, OrderStatus } from "@/types";
 
-const STATUS_ACTIONS: { next: OrderStatus; label: string; color: string }[] = [
-  { next: "IN_DIAGNOSIS", label: "Iniciar Diagnostico", color: "bg-blue-500" },
-  { next: "BUDGETED", label: "Presupuestar", color: "bg-yellow-500" },
-  { next: "IN_PROGRESS", label: "Iniciar Trabajo", color: "bg-orange-500" },
-  { next: "IN_REVIEW", label: "Enviar a Revision", color: "bg-purple-500" },
-  { next: "READY", label: "Marcar como Listo", color: "bg-green-500" },
-  { next: "DELIVERED", label: "Entregar Vehiculo", color: "bg-green-600" },
-];
+const STATUS_ACTIONS: Record<OrderStatus, { next: OrderStatus; label: string; color: string } | null> = {
+  RECEIVED:     { next: "IN_DIAGNOSIS", label: "Iniciar Diagnostico", color: "bg-blue-600 hover:bg-blue-700 active:bg-blue-800" },
+  IN_DIAGNOSIS: { next: "BUDGETED",      label: "Presupuestar",        color: "bg-amber-600 hover:bg-amber-700 active:bg-amber-800" },
+  BUDGETED:     { next: "IN_PROGRESS",   label: "Iniciar Trabajo",      color: "bg-orange-600 hover:bg-orange-700 active:bg-orange-800" },
+  IN_PROGRESS:  { next: "IN_REVIEW",     label: "Enviar a Revision",    color: "bg-purple-600 hover:bg-purple-700 active:bg-purple-800" },
+  IN_REVIEW:    { next: "READY",         label: "Marcar como Listo",    color: "bg-green-500 hover:bg-green-600 active:bg-green-700" },
+  READY:        { next: "DELIVERED",     label: "Entregar Vehiculo",    color: "bg-green-700 hover:bg-green-800 active:bg-green-900" },
+  DELIVERED:    null,
+  CANCELLED:    null,
+};
 
 const STATUS_LABEL: Record<string, string> = {
   RECEIVED: "Recibido",
@@ -39,14 +44,8 @@ const EVENT_ICONS: Record<string, string> = {
   MECHANIC_PROGRESS: "📊",
 };
 
-function getAvailableActions(currentStatus: OrderStatus) {
-  const flow: Record<OrderStatus, number> = {
-    RECEIVED: 0, IN_DIAGNOSIS: 1, BUDGETED: 2, IN_PROGRESS: 3,
-    IN_REVIEW: 4, READY: 5, DELIVERED: -1, CANCELLED: -1,
-  };
-  const current = flow[currentStatus];
-  if (current < 0) return [];
-  return STATUS_ACTIONS.filter((_, idx) => idx >= current);
+function getNextAction(currentStatus: OrderStatus): { next: OrderStatus; label: string; color: string } | null {
+  return STATUS_ACTIONS[currentStatus] ?? null;
 }
 
 function translateStatus(raw: string): string {
@@ -84,12 +83,124 @@ export default function OrderDetailPage() {
   const [visibleItems, setVisibleItems] = useState(5);
   const [deletePhotoTarget, setDeletePhotoTarget] = useState<{ photoId: string; url: string } | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [showSignature, setShowSignature] = useState(false);
+  const [signatureData, setSignatureData] = useState<string | null>(null);
+  const signatureRef = useRef<HTMLCanvasElement>(null);
+  const sigDrawing = useRef(false);
+  const socketRef = useRef<Socket | null>(null);
+  const qrCanvasRef = useRef<HTMLCanvasElement>(null);
+  const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
+  const mechanic = useAuthStore((s) => s.mechanic);
+  const token = useAuthStore((s) => s.accessToken);
+  const isTrainee = mechanic?.role === "TRAINEE";
 
   useEffect(() => {
     if (!toast) return;
     const t = setTimeout(() => setToast(null), 4000);
     return () => clearTimeout(t);
   }, [toast]);
+
+  useEffect(() => {
+    if (!id || !token) return;
+
+    const socket = io(import.meta.env.VITE_WS_URL || "http://localhost:3001", {
+      auth: { token },
+      transports: ["websocket"],
+      reconnection: true,
+      reconnectionAttempts: 5,
+      reconnectionDelay: 3000,
+    });
+
+    socket.on("connect", () => {
+      socket.emit("order:subscribe", { orderId: id });
+    });
+
+    socket.on("order:updated", () => {
+      queryClient.invalidateQueries({ queryKey: ["orders", id] });
+      queryClient.invalidateQueries({ queryKey: ["orders"] });
+    });
+
+    socket.on("order:status_changed", () => {
+      queryClient.invalidateQueries({ queryKey: ["orders", id] });
+      queryClient.invalidateQueries({ queryKey: ["orders"] });
+    });
+
+    socketRef.current = socket;
+
+    return () => {
+      socket.emit("order:unsubscribe", { orderId: id });
+      socket.off("connect");
+      socket.off("order:updated");
+      socket.off("order:status_changed");
+      socket.off("mechanic:progress");
+    };
+  }, [id, token, queryClient]);
+
+  const startSignature = useCallback(() => {
+    setShowSignature(true);
+    setSignatureData(null);
+    setTimeout(() => {
+      const canvas = signatureRef.current;
+      if (!canvas) return;
+      const rect = canvas.getBoundingClientRect();
+      canvas.width = rect.width;
+      canvas.height = rect.height;
+      const ctx = canvas.getContext("2d");
+      if (ctx) {
+        ctx.fillStyle = "#ffffff";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.strokeStyle = "#000000";
+        ctx.lineWidth = 2;
+        ctx.lineCap = "round";
+      }
+    }, 100);
+  }, []);
+
+  const handleSigStart = useCallback((e: React.PointerEvent) => {
+    sigDrawing.current = true;
+    const canvas = signatureRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    const rect = canvas.getBoundingClientRect();
+    ctx.beginPath();
+    ctx.moveTo(e.clientX - rect.left, e.clientY - rect.top);
+    canvas.setPointerCapture(e.pointerId);
+  }, []);
+
+  const handleSigMove = useCallback((e: React.PointerEvent) => {
+    if (!sigDrawing.current) return;
+    const canvas = signatureRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    const rect = canvas.getBoundingClientRect();
+    ctx.lineTo(e.clientX - rect.left, e.clientY - rect.top);
+    ctx.stroke();
+  }, []);
+
+  const handleSigEnd = useCallback((e: React.PointerEvent) => {
+    sigDrawing.current = false;
+    const canvas = signatureRef.current;
+    if (!canvas) return;
+    canvas.releasePointerCapture(e.pointerId);
+  }, []);
+
+  const clearSignature = useCallback(() => {
+    const canvas = signatureRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+  }, []);
+
+  const confirmSignature = useCallback(() => {
+    const canvas = signatureRef.current;
+    if (!canvas) return;
+    setSignatureData(canvas.toDataURL("image/png"));
+    setShowSignature(false);
+  }, []);
 
   const handleStatusChange = async () => {
     if (!confirmAction || !order) return;
@@ -152,8 +263,20 @@ export default function OrderDetailPage() {
   }
 
   const isDelivered = order.status === "DELIVERED";
+  const isInProgress = order.status === "IN_PROGRESS";
+  const isReady = order.status === "READY";
 
-  const availableActions = getAvailableActions(order.status);
+  useEffect(() => {
+    if (!isReady || !order) return;
+    const total = order as any;
+    const amount = Number(total.totalCost ?? total.finalAmount ?? 0).toFixed(2);
+    const qrText = `ARELAN|${order.id.slice(0, 8)}|${amount}|PEN`;
+    QRCode.toDataURL(qrText, { width: 200, margin: 2, color: { dark: "#1B3A6B" } })
+      .then((url: string) => setQrDataUrl(url))
+      .catch(() => setQrDataUrl(null));
+  }, [isReady, order]);
+
+  const nextAction = getNextAction(order.status);
   const safePhotos = (order as any).photos ?? (order as any).photosRel ?? [];
   const statusHistory = (order as any).timeline ?? (order as any).statusHistory ?? [];
   const events = (order as any).events ?? [];
@@ -182,7 +305,9 @@ export default function OrderDetailPage() {
           <CardContent className="p-4">
             <div className="flex items-center justify-between mb-3">
               <span className="text-sm text-gray-500">Estado actual</span>
-              <OrderStatusBadge status={order.status} />
+              <div data-testid="order-status">
+                <OrderStatusBadge status={order.status} />
+              </div>
             </div>
             <p className="text-gray-700">{order.description}</p>
             <p className="text-xs text-gray-400 mt-2">
@@ -286,6 +411,47 @@ export default function OrderDetailPage() {
           </Card>
         )}
 
+        {isReady && qrDataUrl && (
+          <Card>
+            <CardHeader>
+              <h2 className="text-base font-semibold">Pago de Liquidación</h2>
+            </CardHeader>
+            <CardContent className="p-4 pt-0 flex flex-col items-center space-y-3">
+              <div data-testid="payment-qr" className="bg-white p-3 rounded-lg border border-gray-200">
+                <img src={qrDataUrl} alt="QR de pago" className="w-48 h-48" />
+              </div>
+              <p className="text-xs text-gray-500 text-center">
+                Escanee este QR con Yape o Plin para pagar el monto exacto de la liquidación
+              </p>
+              <canvas ref={qrCanvasRef} className="hidden" />
+            </CardContent>
+          </Card>
+        )}
+
+        {isReady && (
+          <Card>
+            <CardHeader>
+              <h2 className="text-base font-semibold">Firma Digital del Cliente</h2>
+            </CardHeader>
+            <CardContent className="p-4 pt-0 space-y-3">
+              {signatureData ? (
+                <div className="space-y-2">
+                  <img src={signatureData} alt="Firma del cliente" className="w-full h-32 object-contain rounded-lg border border-gray-200 bg-white" />
+                  <button type="button" onClick={startSignature}
+                    className="w-full py-2 rounded-lg bg-gray-100 text-sm font-medium text-gray-600 hover:bg-gray-200 transition-colors min-h-[44px]">
+                    Volver a firmar
+                  </button>
+                </div>
+              ) : (
+                <button type="button" onClick={startSignature}
+                  className="w-full h-14 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 active:bg-blue-800 transition-colors flex items-center justify-center min-h-[48px]">
+                  ✍️ Firmar Entrega
+                </button>
+              )}
+            </CardContent>
+          </Card>
+        )}
+
         {safePhotos.length > 0 && (
           <Card>
             <CardHeader><h2 className="text-base font-semibold">Fotos ({safePhotos.length})</h2></CardHeader>
@@ -333,34 +499,61 @@ export default function OrderDetailPage() {
             </div>
           </div>
         ) : (
-          <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 p-3 space-y-2">
-            <div className="flex gap-2">
-              <button type="button" onClick={() => navigate(`/orders/${order.id}/progress`)}
-                className="flex-1 h-14 rounded-lg bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 active:bg-indigo-800 transition-colors flex items-center justify-center min-h-[56px]">
-                Reportar Avance
-              </button>
-              <button type="button" onClick={() => navigate(`/photo-upload?orderId=${order.id}`)}
-                className="flex-1 h-14 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 active:bg-blue-800 transition-colors flex items-center justify-center min-h-[56px]">
-                Agregar Foto
-              </button>
-              <button type="button" onClick={() => navigate(`/parts-request?orderId=${order.id}`)}
-                className="flex-1 h-14 rounded-lg bg-amber-600 text-white text-sm font-semibold hover:bg-amber-700 active:bg-amber-800 transition-colors flex items-center justify-center min-h-[56px]">
-                Pedir Repuestos
-              </button>
-            </div>
-            {availableActions.length > 0 && (
-              <div className="flex flex-wrap gap-2">
-                {availableActions.map((action) => (
-                  <button key={action.next} type="button" onClick={() => setConfirmAction(action)} disabled={updateStatus.isPending}
-                    className={`flex-1 h-14 text-sm font-semibold rounded-lg text-white transition-colors flex items-center justify-center min-h-[56px] disabled:opacity-50 disabled:cursor-not-allowed ${
-                      action.next === "DELIVERED" ? "bg-green-600 hover:bg-green-700 active:bg-green-800"
-                      : action.next === "READY" ? "bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800"
-                      : "bg-[#1B3A6B] hover:bg-[#152E54] active:bg-[#0F2240]"
-                    }`}>
-                    {action.label}
+          <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 p-2 grid grid-cols-2 gap-2 md:grid-cols-3 md:gap-3">
+            {isInProgress && (
+              <>
+                <button type="button" onClick={() => navigate(`/orders/${order.id}/progress`)}
+                  className="rounded-lg bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 active:bg-indigo-800 transition-colors flex items-center justify-center min-h-[48px]">
+                  Reportar Avance
+                </button>
+                <button type="button" onClick={() => navigate(`/photo-upload?orderId=${order.id}`)}
+                  className="rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 active:bg-blue-800 transition-colors flex items-center justify-center min-h-[48px]">
+                  Agregar Foto
+                </button>
+                <button type="button" onClick={() => navigate(`/parts-request?orderId=${order.id}`)}
+                  className="rounded-lg bg-amber-600 text-white text-sm font-semibold hover:bg-amber-700 active:bg-amber-800 transition-colors flex items-center justify-center min-h-[48px]">
+                  Pedir Repuestos
+                </button>
+              </>
+            )}
+            {nextAction && (
+              <>
+                {nextAction.next === "DELIVERED" && isTrainee ? (
+                  <div className="col-span-2 md:col-span-3">
+                    <button
+                      type="button"
+                      disabled
+                      className="w-full rounded-lg bg-gray-400 text-white text-sm font-semibold flex items-center justify-center min-h-[48px] cursor-not-allowed"
+                    >
+                      🔒 Entregar Vehículo (Requiere autorización de Mecánico)
+                    </button>
+                    <p className="text-xs text-gray-500 text-center mt-1">
+                      Los practicantes no pueden cerrar órdenes. Solicite ayuda a un mecánico autorizado.
+                    </p>
+                  </div>
+                ) : nextAction.next === "DELIVERED" && !signatureData ? (
+                  <div className="col-span-2 md:col-span-3">
+                    <button
+                      type="button"
+                      disabled
+                      className="w-full rounded-lg bg-gray-400 text-white text-sm font-semibold flex items-center justify-center min-h-[48px] cursor-not-allowed"
+                    >
+                      ✍️ Se requiere firma del cliente para entregar
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    key={nextAction.next}
+                    type="button"
+                    data-testid={nextAction.next === "DELIVERED" ? "submit-order" : nextAction.next === "IN_REVIEW" ? "complete-work" : undefined}
+                    onClick={() => setConfirmAction(nextAction)}
+                    disabled={updateStatus.isPending}
+                    className={`rounded-lg text-white text-sm font-semibold transition-colors flex items-center justify-center min-h-[48px] disabled:opacity-50 disabled:cursor-not-allowed ${nextAction.color} ${isInProgress ? "col-span-2 md:col-span-1" : "col-span-2 md:col-span-3"}`}
+                  >
+                    {nextAction.label}
                   </button>
-                ))}
-              </div>
+                )}
+              </>
             )}
           </div>
         )}
@@ -417,6 +610,42 @@ export default function OrderDetailPage() {
             ✕
           </button>
           <img src={activePhotoUrl} alt="Foto ampliada" className="max-w-full max-h-full object-contain p-4" onClick={(e) => e.stopPropagation()} />
+        </div>
+      )}
+
+      {showSignature && (
+        <div className="fixed inset-0 z-50 flex flex-col bg-white">
+          <div className="bg-[#1B3A6B] text-white px-4 py-3 flex items-center justify-between">
+            <h2 className="text-lg font-bold">Firma del Cliente</h2>
+            <button type="button" onClick={() => setShowSignature(false)}
+              className="text-white hover:text-gray-200 text-sm font-semibold">
+              Cancelar
+            </button>
+          </div>
+          <div className="flex-1 bg-gray-100 p-4 flex flex-col">
+            <p className="text-sm text-gray-500 mb-2 text-center">Firme con el dedo en el recuadro</p>
+            <div className="flex-1 rounded-lg border-2 border-dashed border-gray-300 bg-white overflow-hidden">
+              <canvas
+                ref={signatureRef}
+                className="w-full h-full touch-none"
+                style={{ minHeight: "300px" }}
+                onPointerDown={handleSigStart}
+                onPointerMove={handleSigMove}
+                onPointerUp={handleSigEnd}
+                onPointerLeave={handleSigEnd}
+              />
+            </div>
+            <div className="flex gap-3 mt-4">
+              <button type="button" onClick={clearSignature}
+                className="flex-1 h-14 rounded-lg bg-gray-200 text-gray-700 font-semibold hover:bg-gray-300 active:bg-gray-400 transition-colors min-h-[48px]">
+                Limpiar Trazo
+              </button>
+              <button type="button" onClick={confirmSignature}
+                className="flex-1 h-14 rounded-lg bg-green-600 text-white font-semibold hover:bg-green-700 active:bg-green-800 transition-colors min-h-[48px]">
+                Confirmar Firma
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

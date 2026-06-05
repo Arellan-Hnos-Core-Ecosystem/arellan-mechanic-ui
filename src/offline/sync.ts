@@ -70,8 +70,7 @@ async function processAction(action: OfflineAction) {
     case "REQUEST_PARTS": {
       const p = action.payload as { orderId: string; itemId: string; quantity: number };
       await api.post(`/orders/${p.orderId}/parts`, {
-        itemId: p.itemId,
-        quantity: p.quantity,
+        items: [{ itemId: p.itemId, quantity: p.quantity }],
       });
       break;
     }

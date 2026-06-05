@@ -19,6 +19,7 @@ import {
 } from "@arellan-hnos-core-ecosystem/ui";
 import { useMyOrders } from "@/hooks/use-orders";
 import { useInventoryList, useRequestParts } from "@/hooks/use-inventory";
+import { useAuthStore } from "@/stores/auth";
 
 const schema = z.object({
   orderId: z.string().min(1, "Seleccione una orden de trabajo"),
@@ -41,6 +42,8 @@ export default function PartsRequestPage() {
   const { data: inventoryRaw, isLoading: inventoryLoading } = useInventoryList();
   const inventory = Array.isArray(inventoryRaw) ? inventoryRaw : (Array.isArray((inventoryRaw as any)?.data) ? (inventoryRaw as any).data : []);
   const requestParts = useRequestParts();
+  const mechanic = useAuthStore((s) => s.mechanic);
+  const isTrainee = mechanic?.role === "TRAINEE";
   const [toast, setToast] = useState<{
     variant: "success" | "error";
     message: string;
@@ -216,6 +219,14 @@ export default function PartsRequestPage() {
                   Código: {selectedItem.code} · Stock disponible: {selectedItem.stock} · Categoría:{" "}
                   {selectedItem.category}
                 </p>
+                {(selectedItem as any).minStock !== undefined && selectedItem.stock <= ((selectedItem as any).minStock || 5) && (
+                  <div className="mt-2 flex items-center gap-1.5 p-2 rounded bg-amber-100 border border-amber-300">
+                    <span className="text-xs">⚠️</span>
+                    <p className="text-xs font-medium text-amber-800">
+                      Stock crítico: solo {selectedItem.stock} unidad(es). Podría retrasar la reparación.
+                    </p>
+                  </div>
+                )}
               </div>
             )}
 
@@ -255,9 +266,27 @@ export default function PartsRequestPage() {
           </Card>
         )}
 
+        {/* Trainee Warning */}
+        {isTrainee && selectedItem && totalCost > 500 && (
+          <Card>
+            <CardContent className="p-3 bg-amber-50 border border-amber-200 rounded-lg">
+              <div className="flex items-start gap-2">
+                <span className="text-lg">⚠️</span>
+                <div>
+                  <p className="text-sm font-semibold text-amber-800">Aprobación Requerida</p>
+                  <p className="text-xs text-amber-700">
+                    Como practicante, las solicitudes superiores a S/500 requieren aprobación de un mecánico o administrador.
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         {/* Submit */}
         <button
           type="submit"
+          data-testid="submit-order"
           disabled={requestParts.isPending || !selectedOrderId || !selectedItemId || !quantity || (selectedItem && quantity > selectedItem.stock)}
           className="w-full h-14 text-lg font-semibold rounded-lg bg-slate-700 text-white hover:bg-slate-800 active:bg-slate-900 transition-colors flex items-center justify-center shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
         >

@@ -132,7 +132,9 @@ export default function DashboardPage() {
                       [{order.vehiclePlate}] {order.vehicleBrand} {order.vehicleModel}
                     </p>
                     </div>
-                    <OrderStatusBadge status={order.status} />
+                    <div data-testid="order-status">
+                      <OrderStatusBadge status={order.status} />
+                    </div>
                   </div>
                   <p className="text-sm text-gray-700 line-clamp-2">
                     {order.description}

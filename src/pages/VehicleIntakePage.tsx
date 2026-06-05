@@ -57,6 +57,7 @@ const PHOTO_POSITIONS = [
   { key: "BACK", label: "Atrás" },
   { key: "LEFT", label: "Lado Izquierdo" },
   { key: "RIGHT", label: "Lado Derecho" },
+  { key: "DASHBOARD", label: "Tablero" },
 ] as const;
 
 export default function VehicleIntakePage() {
@@ -227,7 +228,7 @@ export default function VehicleIntakePage() {
     if (!allPhotosCaptured) {
       setToast({
         variant: "error",
-        message: "Debe capturar las 4 fotos del vehículo",
+        message: "Debe capturar las 5 fotos del vehículo",
       });
       return;
     }
@@ -372,7 +373,7 @@ export default function VehicleIntakePage() {
         <Card>
           <CardHeader>
             <h2 className="text-base font-semibold">
-              Fotos del vehículo (4 obligatorias)
+              Fotos del vehículo (5 obligatorias)
             </h2>
           </CardHeader>
           <CardContent className="p-4 pt-0">
@@ -441,6 +442,7 @@ export default function VehicleIntakePage() {
         {/* Submit */}
         <button
           type="submit"
+          data-testid="submit-order"
           disabled={checkin.isPending}
           className="w-full h-14 text-lg font-semibold rounded-lg bg-green-600 text-white hover:bg-green-700 active:bg-green-800 transition-colors flex items-center justify-center shadow-sm"
         >
