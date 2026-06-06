@@ -96,8 +96,30 @@ export const useAuthStore = create<AuthStore>((set, get) => {
       if (isLoggingOut) return;
       isLoggingOut = true;
       stopInactivityTimer();
-      sessionStorage.removeItem("arellan-auth");
-      set({ mechanic: null, accessToken: null, refreshToken: null, sessionExpiresAt: null });
+
+      localStorage.clear();
+      sessionStorage.clear();
+
+      document.cookie = "arellan-auth=; path=/; max-age=0; SameSite=Lax";
+
+      import("@/lib/api").then((mod) => {
+        delete mod.default.defaults.headers.common["Authorization"];
+      });
+
+      import("@/main").then((mainMod) => {
+        mainMod.queryClient.clear();
+      });
+
+      set({
+        mechanic: null,
+        accessToken: null,
+        refreshToken: null,
+        sessionExpiresAt: null,
+      });
+
+      setTimeout(() => {
+        window.location.href = "/login";
+      }, 50);
     },
 
     checkSession: () => {

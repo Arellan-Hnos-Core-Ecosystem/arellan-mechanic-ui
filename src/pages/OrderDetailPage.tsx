@@ -136,6 +136,16 @@ export default function OrderDetailPage() {
     };
   }, [id, token, queryClient]);
 
+  useEffect(() => {
+    if (!order || order.status !== "READY") return;
+    const total = order as any;
+    const amount = Number(total.totalCost ?? total.finalAmount ?? 0).toFixed(2);
+    const qrText = `ARELAN|${order.id.slice(0, 8)}|${amount}|PEN`;
+    QRCode.toDataURL(qrText, { width: 200, margin: 2, color: { dark: "#1B3A6B" } })
+      .then((url: string) => setQrDataUrl(url))
+      .catch(() => setQrDataUrl(null));
+  }, [order]);
+
   const startSignature = useCallback(() => {
     setShowSignature(true);
     setSignatureData(null);
@@ -265,16 +275,6 @@ export default function OrderDetailPage() {
   const isDelivered = order.status === "DELIVERED";
   const isInProgress = order.status === "IN_PROGRESS";
   const isReady = order.status === "READY";
-
-  useEffect(() => {
-    if (!isReady || !order) return;
-    const total = order as any;
-    const amount = Number(total.totalCost ?? total.finalAmount ?? 0).toFixed(2);
-    const qrText = `ARELAN|${order.id.slice(0, 8)}|${amount}|PEN`;
-    QRCode.toDataURL(qrText, { width: 200, margin: 2, color: { dark: "#1B3A6B" } })
-      .then((url: string) => setQrDataUrl(url))
-      .catch(() => setQrDataUrl(null));
-  }, [isReady, order]);
 
   const nextAction = getNextAction(order.status);
   const safePhotos = (order as any).photos ?? (order as any).photosRel ?? [];

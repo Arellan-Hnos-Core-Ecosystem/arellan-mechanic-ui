@@ -9,7 +9,7 @@ export interface PaginatedOrders {
   nextCursor: string | null;
 }
 
-function useOfflineFallback<T>(key: string[], fn: () => Promise<T>) {
+function useOfflineFallback<T>(key: string[], fn: () => Promise<T>, enabled = true) {
   const isOnline = useOfflineStore((s) => s.isOnline);
   const queryClient = useQueryClient();
 
@@ -25,6 +25,7 @@ function useOfflineFallback<T>(key: string[], fn: () => Promise<T>) {
     staleTime: 30000,
     retry: 2,
     refetchInterval: isOnline ? 30000 : false,
+    enabled,
   });
 }
 
@@ -40,6 +41,7 @@ function extractOrders(raw: unknown): Order[] {
 
 export function useMyOrders() {
   const mechanicId = useAuthStore((s) => s.mechanic?.id);
+  const token = useAuthStore((s) => s.accessToken);
 
   return useQuery<Order[]>({
     queryKey: ["orders", "my", mechanicId ?? ""],
@@ -50,14 +52,16 @@ export function useMyOrders() {
     staleTime: 30000,
     retry: 2,
     refetchInterval: 30000,
+    enabled: !!mechanicId && !!token,
   });
 }
 
 export function useOrder(orderId: string | undefined) {
+  const token = useAuthStore((s) => s.accessToken);
   return useOfflineFallback<Order>(["orders", orderId ?? ""], async () => {
     const { data } = await api.get(`/orders/${orderId}`);
     return data;
-  });
+  }, !!orderId && !!token);
 }
 
 export function useUpdateStatus() {

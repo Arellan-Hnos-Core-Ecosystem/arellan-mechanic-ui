@@ -18,15 +18,21 @@ function onTokenRefreshed(token: string) {
   refreshSubscribers = [];
 }
 
-api.interceptors.request.use((config) => {
+function getAccessToken(): string | null {
   const stored = sessionStorage.getItem("arellan-auth");
-  if (stored) {
-    try {
-      const { accessToken } = JSON.parse(stored);
-      if (accessToken) {
-        config.headers.Authorization = `Bearer ${accessToken}`;
-      }
-    } catch { /* ignore */ }
+  if (!stored) return null;
+  try {
+    const { accessToken } = JSON.parse(stored);
+    return accessToken || null;
+  } catch {
+    return null;
+  }
+}
+
+api.interceptors.request.use((config) => {
+  const token = getAccessToken();
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
   }
   return config;
 });
