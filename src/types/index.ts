@@ -120,10 +120,44 @@ export interface PartsRequestForm {
   quantity: number;
 }
 
+export interface UpdateStatusPayload {
+  orderId: string;
+  status: string;
+  notes?: string;
+}
+
+export interface PhotoUploadPayload {
+  orderId: string;
+  position: "FRONT" | "BACK" | "LEFT" | "RIGHT" | "DAMAGE" | "DETAIL";
+  caption?: string;
+}
+
+export interface VehicleIntakePayload {
+  plate: string;
+  kilometerReading?: number;
+  fuelLevel?: string;
+  description?: string;
+}
+
+export interface PartsRequestPayload {
+  orderId: string;
+  itemId: string;
+  quantity: number;
+}
+
+export interface StoredPhotoBlob {
+  id: string;
+  actionId: string;
+  blob: Blob;
+  position: string;
+  mimeType: string;
+  createdAt: number;
+}
+
 export interface OfflineAction {
   id: string;
   type: "UPDATE_STATUS" | "VEHICLE_INTAKE" | "REQUEST_PARTS" | "UPLOAD_PHOTO";
-  payload: unknown;
+  payload: UpdateStatusPayload | PhotoUploadPayload | VehicleIntakePayload | PartsRequestPayload | unknown;
   createdAt: number;
   retries: number;
 }

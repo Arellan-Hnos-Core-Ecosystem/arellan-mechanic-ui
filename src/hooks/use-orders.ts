@@ -1,8 +1,9 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import api from "@/lib/api";
-import type { Order } from "@/types";
+import type { Order, VehicleIntakePayload, PhotoUploadPayload } from "@/types";
 import { useOfflineStore } from "@/stores/offline";
 import { useAuthStore } from "@/stores/auth";
+import { storePhotoBlob } from "@/offline/queue";
 
 export interface PaginatedOrders {
   data: Order[];
@@ -58,10 +59,14 @@ export function useMyOrders() {
 
 export function useOrder(orderId: string | undefined) {
   const token = useAuthStore((s) => s.accessToken);
-  return useOfflineFallback<Order>(["orders", orderId ?? ""], async () => {
-    const { data } = await api.get(`/orders/${orderId}`);
-    return data;
-  }, !!orderId && !!token);
+  return useOfflineFallback<Order>(
+    ["orders", orderId ?? ""],
+    async () => {
+      const { data } = await api.get(`/orders/${orderId}`);
+      return data;
+    },
+    !!orderId && !!token,
+  );
 }
 
 export function useUpdateStatus() {
@@ -69,26 +74,12 @@ export function useUpdateStatus() {
   const { isOnline, enqueue } = useOfflineStore();
 
   return useMutation({
-    mutationFn: async ({
-      orderId,
-      status,
-      notes,
-    }: {
-      orderId: string;
-      status: string;
-      notes?: string;
-    }) => {
+    mutationFn: async ({ orderId, status, notes }: { orderId: string; status: string; notes?: string }) => {
       if (!isOnline) {
-        await enqueue({
-          type: "UPDATE_STATUS",
-          payload: { orderId, status, notes },
-        });
+        await enqueue({ type: "UPDATE_STATUS", payload: { orderId, status, notes } });
         return { offline: true };
       }
-      const { data } = await api.post(`/orders/${orderId}/status`, {
-        status,
-        notes,
-      });
+      const { data } = await api.post(`/orders/${orderId}/status`, { status, notes });
       return data;
     },
     onSuccess: () => {
@@ -105,14 +96,71 @@ export function useVehicleCheckin() {
     mutationFn: async (formData: FormData) => {
       if (!isOnline) {
         const plate = formData.get("plate") as string;
-        const items = formData.getAll("photos");
-        await enqueue({
-          type: "VEHICLE_INTAKE",
-          payload: { plate, photosCount: items.length },
-        });
+        const kilometerReading = formData.get("kilometerReading") as string | null;
+        const fuelLevel = formData.get("fuelLevel") as string | null;
+        const description = formData.get("description") as string | null;
+
+        const payload: VehicleIntakePayload = {
+          plate,
+          kilometerReading: kilometerReading ? Number(kilometerReading) : undefined,
+          fuelLevel: fuelLevel ?? undefined,
+          description: description ?? undefined,
+        };
+
+        const actionId = await enqueue({ type: "VEHICLE_INTAKE", payload });
+
+        const photoFiles = formData.getAll("photos") as File[];
+        const positions = ["FRONT", "BACK", "LEFT", "RIGHT", "DASHBOARD"];
+        for (let i = 0; i < photoFiles.length; i++) {
+          const file = photoFiles[i];
+          const position = positions[i] ?? `PHOTO_${i}`;
+          await storePhotoBlob(actionId, file, position);
+        }
+
         return { offline: true };
       }
+
       const { data } = await api.post("/orders/checkin", formData, {
+        headers: { "Content-Type": "multipart/form-data" },
+      });
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["orders"] });
+    },
+  });
+}
+
+export function useUploadPhoto() {
+  const queryClient = useQueryClient();
+  const { isOnline, enqueue } = useOfflineStore();
+
+  return useMutation({
+    mutationFn: async ({
+      orderId,
+      position,
+      caption,
+      file,
+    }: {
+      orderId: string;
+      position: PhotoUploadPayload["position"];
+      caption?: string;
+      file: File;
+    }) => {
+      if (!isOnline) {
+        const payload: PhotoUploadPayload = { orderId, position, caption };
+        const actionId = await enqueue({ type: "UPLOAD_PHOTO", payload });
+        await storePhotoBlob(actionId, file, position);
+        return { offline: true };
+      }
+
+      const formData = new FormData();
+      formData.append("orderId", orderId);
+      formData.append("position", position);
+      if (caption) formData.append("caption", caption);
+      formData.append("photo", file, `${position}.${file.name.split(".").pop() ?? "jpg"}`);
+
+      const { data } = await api.post(`/orders/${orderId}/photos`, formData, {
         headers: { "Content-Type": "multipart/form-data" },
       });
       return data;

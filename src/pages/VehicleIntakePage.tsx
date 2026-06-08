@@ -19,13 +19,13 @@ import {
 } from "@arellan-hnos-core-ecosystem/ui";
 import { useVehicleCheckin } from "@/hooks/use-orders";
 
-const PERU_PLATE_REGEX = /^[A-Z][A-Z0-9]{2}-?\d{3}$/i;
+const PERU_PLATE_REGEX = /^[A-Z]{3}-\d{3}$/i;
 
 const schema = z.object({
   plate: z
     .string()
     .min(1, "La placa es obligatoria")
-    .regex(PERU_PLATE_REGEX, "Formato inválido. Use ABC123 o ABC-123"),
+    .regex(PERU_PLATE_REGEX, "Formato inválido. Use ABC-123"),
   brand: z
     .string()
     .min(1, "La marca es obligatoria"),
@@ -240,10 +240,8 @@ export default function VehicleIntakePage() {
     formData.append("kilometerReading", String(data.kilometerReading));
     formData.append("fuelLevel", data.fuelLevel);
     formData.append("description", data.description);
-    photos.forEach((p) => {
-      formData.append("photos", p.file);
-      formData.append("photoPositions", p.position);
-    });
+    formData.append("photoPositions", photos.map((p) => p.position).join(","));
+    photos.forEach((p) => formData.append("photos", p.file));
 
     try {
       await checkin.mutateAsync(formData);
@@ -439,12 +437,14 @@ export default function VehicleIntakePage() {
           </CardContent>
         </Card>
 
-        {/* Submit */}
-        <button
+        {/* Submit — min-h-[56px] satisfies touch target for nitrile-gloved mechanics */}
+        <Button
           type="submit"
           data-testid="submit-order"
-          disabled={checkin.isPending}
-          className="w-full h-14 text-lg font-semibold rounded-lg bg-green-600 text-white hover:bg-green-700 active:bg-green-800 transition-colors flex items-center justify-center shadow-sm"
+          disabled={checkin.isPending || !allPhotosCaptured}
+          variant="primary"
+          size="lg"
+          className="w-full min-h-[56px] text-lg font-semibold"
         >
           {checkin.isPending ? (
             <span className="flex items-center gap-2">
@@ -453,7 +453,7 @@ export default function VehicleIntakePage() {
           ) : (
             "Guardar Ingreso"
           )}
-        </button>
+        </Button>
       </form>
 
       {toast && (

@@ -7,7 +7,7 @@ interface OfflineStore {
   syncing: boolean;
   lastSyncAt: number | null;
   setOnline: (online: boolean) => void;
-  enqueue: (action: Omit<OfflineAction, "id" | "createdAt" | "retries">) => Promise<void>;
+  enqueue: (action: Omit<OfflineAction, "id" | "createdAt" | "retries">) => Promise<string>;
   dequeue: (id: string) => void;
   setSyncing: (syncing: boolean) => void;
   setLastSync: (time: number) => void;
@@ -41,10 +41,11 @@ export const useOfflineStore = create<OfflineStore>((set, get) => ({
         payload: JSON.parse(JSON.stringify(entry.payload)),
       });
     } catch {
-      // IndexedDB may not be available; keep in memory
+      // IndexedDB unavailable; keep in memory only
     }
 
     set((s) => ({ queue: [...s.queue, entry] }));
+    return id;
   },
 
   dequeue: (id) => {
