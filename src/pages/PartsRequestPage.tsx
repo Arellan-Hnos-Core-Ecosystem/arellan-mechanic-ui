@@ -49,6 +49,10 @@ export default function PartsRequestPage() {
     message: string;
   } | null>(null);
   const [confirmSend, setConfirmSend] = useState<FormData | null>(null);
+  const [pinValue, setPinValue] = useState("");
+  const [pinError, setPinError] = useState<string | null>(null);
+  const [verifyingPin, setVerifyingPin] = useState(false);
+  const login = useAuthStore((s) => s.login);
 
   const {
     register,
@@ -82,12 +86,8 @@ export default function PartsRequestPage() {
 
   const totalCost = selectedItem ? selectedItem.unitPrice * quantity : 0;
 
-  // Filter orders that are in progress
   const activeOrders = useMemo(
-    () =>
-      orders?.filter(
-        (o) => o.status !== "DELIVERED" && o.status !== "CANCELLED"
-      ) || [],
+    () => orders?.filter((o) => o.status === "IN_PROGRESS") || [],
     [orders]
   );
 
@@ -95,10 +95,30 @@ export default function PartsRequestPage() {
     setConfirmSend(data);
   };
 
+  const handlePinVerifyAndSend = async () => {
+    if (pinValue.length !== 6 || !confirmSend) return;
+    setVerifyingPin(true);
+    setPinError(null);
+    try {
+      const ok = await login(pinValue);
+      if (!ok) {
+        setPinError("PIN incorrecto. Intente nuevamente.");
+        return;
+      }
+      await handleConfirmedSend();
+    } catch {
+      setPinError("Error al verificar PIN. Intente nuevamente.");
+    } finally {
+      setVerifyingPin(false);
+    }
+  };
+
   const handleConfirmedSend = async () => {
     if (!confirmSend) return;
     const data = confirmSend;
     setConfirmSend(null);
+    setPinValue("");
+    setPinError(null);
     try {
       await requestParts.mutateAsync(data);
       setToast({
@@ -284,11 +304,12 @@ export default function PartsRequestPage() {
         )}
 
         {/* Submit */}
-        <button
+        <Button
           type="submit"
           data-testid="submit-order"
+          variant="primary"
+          className="w-full min-h-[56px] text-lg font-semibold"
           disabled={requestParts.isPending || !selectedOrderId || !selectedItemId || !quantity || (selectedItem && quantity > selectedItem.stock)}
-          className="w-full h-14 text-lg font-semibold rounded-lg bg-slate-700 text-white hover:bg-slate-800 active:bg-slate-900 transition-colors flex items-center justify-center shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {requestParts.isPending ? (
             <span className="flex items-center gap-2">
@@ -297,7 +318,7 @@ export default function PartsRequestPage() {
           ) : (
             "Enviar Solicitud"
           )}
-        </button>
+        </Button>
       </form>
 
       {toast && (
@@ -308,40 +329,61 @@ export default function PartsRequestPage() {
 
       {confirmSend && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm p-6">
-            <div className="flex items-center gap-3 mb-4">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm p-6 space-y-4">
+            <div className="flex items-center gap-3">
               <span className="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center text-xl">🔧</span>
               <div>
-                <h3 className="text-lg font-bold text-gray-900">Confirmar solicitud</h3>
-                <p className="text-sm text-gray-500">Esta acción descuenta del inventario</p>
+                <h3 className="text-lg font-bold text-gray-900">Confirmar despacho</h3>
+                <p className="text-sm text-gray-500">Verifica tu identidad con el PIN</p>
               </div>
             </div>
+
             <p className="text-sm text-gray-600">
-              ¿Confirmas el envío de esta solicitud de repuestos al inventario?
+              Ingresa tu PIN de 6 dígitos para confirmar el despacho de repuestos al inventario.
             </p>
-            <div className="mt-6 flex gap-3 justify-end">
-              <button
+
+            <div className="space-y-1">
+              <Input
+                id="pin-confirm"
+                type="password"
+                inputMode="numeric"
+                maxLength={6}
+                pattern="[0-9]{6}"
+                placeholder="● ● ● ● ● ●"
+                value={pinValue}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                  setPinValue(e.target.value.replace(/\D/g, "").slice(0, 6));
+                  setPinError(null);
+                }}
+                className="text-center text-lg tracking-widest h-14"
+                autoFocus
+              />
+              {pinError && <p className="text-xs text-red-600 text-center">{pinError}</p>}
+            </div>
+
+            <div className="flex gap-3">
+              <Button
                 type="button"
-                onClick={() => setConfirmSend(null)}
-                disabled={requestParts.isPending}
-                className="px-4 py-2.5 rounded-lg bg-gray-200 text-gray-700 font-semibold text-sm hover:bg-gray-300 active:bg-gray-400 transition-colors min-h-[44px]"
+                variant="ghost"
+                className="flex-1 min-h-[48px]"
+                onClick={() => { setConfirmSend(null); setPinValue(""); setPinError(null); }}
+                disabled={verifyingPin}
               >
                 Cancelar
-              </button>
-              <button
+              </Button>
+              <Button
                 type="button"
-                onClick={handleConfirmedSend}
-                disabled={requestParts.isPending}
-                className="px-4 py-2.5 rounded-lg bg-slate-700 text-white font-semibold text-sm hover:bg-slate-800 active:bg-slate-900 transition-colors min-h-[44px] disabled:opacity-50"
+                variant="primary"
+                className="flex-1 min-h-[48px]"
+                disabled={pinValue.length !== 6 || verifyingPin}
+                onClick={handlePinVerifyAndSend}
               >
-                {requestParts.isPending ? (
-                  <span className="flex items-center gap-2">
-                    <Spinner size="sm" /> Enviando...
-                  </span>
+                {verifyingPin ? (
+                  <span className="flex items-center gap-2"><Spinner size="sm" /> Verificando...</span>
                 ) : (
-                  "Si, enviar"
+                  "Verificar y despachar"
                 )}
-              </button>
+              </Button>
             </div>
           </div>
         </div>
