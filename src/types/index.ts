@@ -88,6 +88,8 @@ export interface Order {
   description: string;
   status: OrderStatus;
   assignedMechanicId: string;
+  odometerIn: number | null;
+  odometerOut: number | null;
   photos: OrderPhoto[];
   checklist: OrderChecklistItem[];
   partsUsed: OrderPart[];

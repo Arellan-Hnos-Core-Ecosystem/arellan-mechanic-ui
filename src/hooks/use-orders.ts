@@ -88,6 +88,35 @@ export function useUpdateStatus() {
   });
 }
 
+export function useCompleteWorkOrder() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({
+      orderId,
+      odometerOut,
+      technicalNotes,
+      requestedStatus,
+    }: {
+      orderId: string;
+      odometerOut: number;
+      technicalNotes: string;
+      requestedStatus: "READY" | "IN_REVIEW";
+    }) => {
+      const { data } = await api.post(`/orders/${orderId}/complete`, {
+        odometerOut,
+        technicalNotes,
+        requestedStatus,
+      });
+      return data;
+    },
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ["orders"] });
+      queryClient.invalidateQueries({ queryKey: ["orders", variables.orderId] });
+    },
+  });
+}
+
 export function useVehicleCheckin() {
   const queryClient = useQueryClient();
   const { isOnline, enqueue } = useOfflineStore();
@@ -167,6 +196,18 @@ export function useUploadPhoto() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["orders"] });
+    },
+  });
+}
+
+// FASE 3: dispara captura ONVIF de la camara de bahia (Anti-Fraude #8) tras el
+// check-in. Best-effort: si el bridge IoT esta offline, el backend responde
+// igual con { delivered: false } y no se trata como error.
+export function useRequestCameraCapture() {
+  return useMutation({
+    mutationFn: async ({ orderId, position }: { orderId: string; position: string }) => {
+      const { data } = await api.post(`/orders/${orderId}/photos/camera-capture`, { position });
+      return data;
     },
   });
 }

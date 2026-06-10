@@ -17,7 +17,7 @@ import {
   Select,
   FormField,
 } from "@arellan-hnos-core-ecosystem/ui";
-import { useVehicleCheckin } from "@/hooks/use-orders";
+import { useVehicleCheckin, useRequestCameraCapture } from "@/hooks/use-orders";
 
 const PERU_PLATE_REGEX = /^[A-Z]{3}-\d{3}$/i;
 
@@ -63,6 +63,7 @@ const PHOTO_POSITIONS = [
 export default function VehicleIntakePage() {
   const navigate = useNavigate();
   const checkin = useVehicleCheckin();
+  const cameraCapture = useRequestCameraCapture();
   const [photos, setPhotos] = useState<
     { file: File; position: string; preview: string }[]
   >([]);
@@ -244,8 +245,18 @@ export default function VehicleIntakePage() {
     photos.forEach((p) => formData.append("photos", p.file));
 
     try {
-      await checkin.mutateAsync(formData);
+      const result = await checkin.mutateAsync(formData);
       setToast({ variant: "success", message: "Vehículo ingresado exitosamente" });
+
+      // FASE 3: dispara captura ONVIF de la camara de bahia por cada posicion
+      // capturada manualmente (Anti-Fraude #8). Best-effort: no bloquea la
+      // navegacion si el bridge IoT esta offline.
+      if ("orderId" in result && result.orderId) {
+        for (const p of photos) {
+          cameraCapture.mutate({ orderId: result.orderId, position: p.position });
+        }
+      }
+
       setTimeout(() => navigate("/dashboard"), 1500);
     } catch {
       setToast({ variant: "error", message: "Error al ingresar vehículo" });

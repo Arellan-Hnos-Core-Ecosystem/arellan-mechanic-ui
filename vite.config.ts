@@ -95,10 +95,10 @@ export default defineConfig({
     alias: { "@": path.resolve(__dirname, "./src") },
   },
   server: {
-    port: 3002,
+    port: 3003,
     proxy: {
       "/api": {
-        target: "http://localhost:3000",
+        target: "http://localhost:3001",
         changeOrigin: true,
       },
     },

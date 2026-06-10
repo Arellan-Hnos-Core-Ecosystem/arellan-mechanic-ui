@@ -3,12 +3,13 @@ import { useParams, useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { io, type Socket } from "socket.io-client";
 import QRCode from "qrcode";
+import { z } from "zod";
 import api from "@/lib/api";
 import {
   Container, Card, CardHeader, CardContent,
   Button, Badge, Spinner, OrderStatusBadge, Skeleton, StatusIndicator,
 } from "@arellan-hnos-core-ecosystem/ui";
-import { useOrder, useUpdateStatus } from "@/hooks/use-orders";
+import { useOrder, useUpdateStatus, useCompleteWorkOrder } from "@/hooks/use-orders";
 import { useAuthStore } from "@/stores/auth";
 import type { Order, OrderStatus } from "@/types";
 
@@ -17,7 +18,8 @@ const STATUS_ACTIONS: Record<OrderStatus, { next: OrderStatus; label: string; co
   IN_DIAGNOSIS: { next: "BUDGETED",      label: "Presupuestar",        color: "bg-amber-600 hover:bg-amber-700 active:bg-amber-800" },
   BUDGETED:     { next: "IN_PROGRESS",   label: "Iniciar Trabajo",      color: "bg-orange-600 hover:bg-orange-700 active:bg-orange-800" },
   IN_PROGRESS:  { next: "IN_REVIEW",     label: "Enviar a Revision",    color: "bg-purple-600 hover:bg-purple-700 active:bg-purple-800" },
-  IN_REVIEW:    { next: "READY",         label: "Marcar como Listo",    color: "bg-green-500 hover:bg-green-600 active:bg-green-700" },
+  // QA: la aprobacion IN_REVIEW -> READY es exclusiva del Jefe de Taller en arellan-frontend-web
+  IN_REVIEW:    null,
   READY:        { next: "DELIVERED",     label: "Entregar Vehiculo",    color: "bg-green-700 hover:bg-green-800 active:bg-green-900" },
   DELIVERED:    null,
   CANCELLED:    null,
@@ -69,15 +71,41 @@ function translateError(err: unknown): string {
   return replaced;
 }
 
+const completeWorkOrderSchema = (odometerIn: number | null) =>
+  z.object({
+    odometerOut: z
+      .number({ invalid_type_error: "Ingrese un kilometraje valido" })
+      .int("El kilometraje debe ser un numero entero")
+      .min(0, "El kilometraje no puede ser negativo")
+      .refine((val) => odometerIn === null || val >= odometerIn, {
+        message:
+          odometerIn !== null
+            ? `El kilometraje de salida debe ser mayor o igual al de ingreso (${odometerIn} km)`
+            : "Kilometraje invalido",
+      }),
+    technicalNotes: z
+      .string()
+      .trim()
+      .min(5, "Describa el trabajo realizado (minimo 5 caracteres)"),
+  });
+
+type CompleteFormErrors = { odometerOut?: string; technicalNotes?: string };
+
 export default function OrderDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { data: order, isLoading, error } = useOrder(id);
   const updateStatus = useUpdateStatus();
+  const completeWorkOrder = useCompleteWorkOrder();
   const [confirmAction, setConfirmAction] = useState<{
     next: OrderStatus; label: string;
   } | null>(null);
+  const [showCompleteForm, setShowCompleteForm] = useState(false);
+  const [completeOdometer, setCompleteOdometer] = useState("");
+  const [completeNotes, setCompleteNotes] = useState("");
+  const [completeErrors, setCompleteErrors] = useState<CompleteFormErrors>({});
+  const [showTraineeQaWarning, setShowTraineeQaWarning] = useState(false);
   const [toast, setToast] = useState<{ message: string } | null>(null);
   const [activePhotoUrl, setActivePhotoUrl] = useState<string | null>(null);
   const [visibleItems, setVisibleItems] = useState(5);
@@ -223,6 +251,75 @@ export default function OrderDetailPage() {
     } catch (err) {
       setToast({ message: translateError(err) });
     }
+  };
+
+  const openCompleteForm = () => {
+    setCompleteOdometer(order?.odometerIn != null ? String(order.odometerIn) : "");
+    setCompleteNotes("");
+    setCompleteErrors({});
+    setShowCompleteForm(true);
+  };
+
+  const validateCompleteForm = (): { odometerOut: number; technicalNotes: string } | null => {
+    if (!order) return null;
+    const result = completeWorkOrderSchema(order.odometerIn).safeParse({
+      odometerOut: Number(completeOdometer),
+      technicalNotes: completeNotes,
+    });
+    if (!result.success) {
+      const fieldErrors: CompleteFormErrors = {};
+      for (const issue of result.error.issues) {
+        if (issue.path[0] === "odometerOut") fieldErrors.odometerOut = issue.message;
+        if (issue.path[0] === "technicalNotes") fieldErrors.technicalNotes = issue.message;
+      }
+      setCompleteErrors(fieldErrors);
+      return null;
+    }
+    setCompleteErrors({});
+    return result.data;
+  };
+
+  const submitCompletion = async (
+    requestedStatus: "READY" | "IN_REVIEW",
+    data: { odometerOut: number; technicalNotes: string },
+  ) => {
+    if (!order) return;
+    try {
+      await completeWorkOrder.mutateAsync({ orderId: order.id, requestedStatus, ...data });
+      setToast({
+        message:
+          requestedStatus === "READY"
+            ? "Trabajo finalizado. OT lista para entrega."
+            : "OT enviada a revision del Jefe de Taller.",
+      });
+      setShowCompleteForm(false);
+      setShowTraineeQaWarning(false);
+    } catch (err) {
+      setToast({ message: translateError(err) });
+      setShowTraineeQaWarning(false);
+    }
+  };
+
+  const handleFinalize = () => {
+    const data = validateCompleteForm();
+    if (!data) return;
+    void submitCompletion("READY", data);
+  };
+
+  const handleSendToReview = () => {
+    const data = validateCompleteForm();
+    if (!data) return;
+    if (isTrainee) {
+      setShowTraineeQaWarning(true);
+      return;
+    }
+    void submitCompletion("IN_REVIEW", data);
+  };
+
+  const handleConfirmTraineeReview = () => {
+    const data = validateCompleteForm();
+    if (!data) return;
+    void submitCompletion("IN_REVIEW", data);
   };
 
   const handleDeletePhoto = async () => {
@@ -498,6 +595,15 @@ export default function OrderDetailPage() {
               </p>
             </div>
           </div>
+        ) : order.status === "IN_REVIEW" ? (
+          <div className="fixed bottom-0 left-0 right-0 bg-purple-50 border-t border-purple-200 p-4">
+            <div className="flex items-center justify-center gap-2 text-purple-800">
+              <span className="text-lg">🔍</span>
+              <p className="text-sm font-semibold text-center">
+                OT en revision de calidad. Esperando aprobacion del Jefe de Taller.
+              </p>
+            </div>
+          </div>
         ) : (
           <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 p-2 grid grid-cols-2 gap-2 md:grid-cols-3 md:gap-3">
             {isInProgress && (
@@ -518,7 +624,16 @@ export default function OrderDetailPage() {
             )}
             {nextAction && (
               <>
-                {nextAction.next === "DELIVERED" && isTrainee ? (
+                {nextAction.next === "IN_REVIEW" ? (
+                  <button
+                    type="button"
+                    data-testid="complete-work"
+                    onClick={openCompleteForm}
+                    className={`rounded-lg text-white text-sm font-semibold transition-colors flex items-center justify-center min-h-[48px] ${nextAction.color} col-span-2 md:col-span-1`}
+                  >
+                    Finalizar Trabajo
+                  </button>
+                ) : nextAction.next === "DELIVERED" && isTrainee ? (
                   <div className="col-span-2 md:col-span-3">
                     <button
                       type="button"
@@ -545,7 +660,7 @@ export default function OrderDetailPage() {
                   <button
                     key={nextAction.next}
                     type="button"
-                    data-testid={nextAction.next === "DELIVERED" ? "submit-order" : nextAction.next === "IN_REVIEW" ? "complete-work" : undefined}
+                    data-testid={nextAction.next === "DELIVERED" ? "submit-order" : undefined}
                     onClick={() => setConfirmAction(nextAction)}
                     disabled={updateStatus.isPending}
                     className={`rounded-lg text-white text-sm font-semibold transition-colors flex items-center justify-center min-h-[48px] disabled:opacity-50 disabled:cursor-not-allowed ${nextAction.color} ${isInProgress ? "col-span-2 md:col-span-1" : "col-span-2 md:col-span-3"}`}
@@ -572,6 +687,127 @@ export default function OrderDetailPage() {
               <button type="button" onClick={handleStatusChange} disabled={updateStatus.isPending}
                 className="px-4 py-2.5 rounded-lg bg-emerald-600 text-white font-semibold text-sm hover:bg-emerald-700 active:bg-emerald-800 transition-colors min-h-[44px] disabled:opacity-50">
                 {updateStatus.isPending ? "Cambiando..." : "Si, cambiar"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showCompleteForm && order && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm p-6">
+            <h3 className="text-lg font-bold text-gray-900">Finalizar Trabajo</h3>
+            <p className="mt-1 text-sm text-gray-600">
+              Registra el kilometraje de salida y describe el trabajo realizado.
+            </p>
+
+            <div className="mt-4 space-y-3">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Kilometraje de salida (km)
+                </label>
+                <input
+                  type="number"
+                  inputMode="numeric"
+                  value={completeOdometer}
+                  onChange={(e) => setCompleteOdometer(e.target.value)}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm focus:border-[#1B3A6B] focus:ring-1 focus:ring-[#1B3A6B] outline-none"
+                  style={{ minHeight: "44px" }}
+                  placeholder="Ej. 85120"
+                  data-testid="odometer-out-input"
+                />
+                {order.odometerIn != null && (
+                  <p className="text-xs text-gray-400 mt-1">Kilometraje de ingreso: {order.odometerIn} km</p>
+                )}
+                {completeErrors.odometerOut && (
+                  <p className="text-xs text-red-600 mt-1">{completeErrors.odometerOut}</p>
+                )}
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Notas tecnicas del trabajo
+                </label>
+                <textarea
+                  value={completeNotes}
+                  onChange={(e) => setCompleteNotes(e.target.value)}
+                  rows={4}
+                  className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm focus:border-[#1B3A6B] focus:ring-1 focus:ring-[#1B3A6B] outline-none resize-none"
+                  placeholder="Describa el trabajo ejecutado, repuestos cambiados, pruebas realizadas..."
+                  data-testid="technical-notes-input"
+                />
+                {completeErrors.technicalNotes && (
+                  <p className="text-xs text-red-600 mt-1">{completeErrors.technicalNotes}</p>
+                )}
+              </div>
+            </div>
+
+            <div className="mt-6 flex flex-col gap-2">
+              {isTrainee ? (
+                <button
+                  type="button"
+                  onClick={handleSendToReview}
+                  disabled={completeWorkOrder.isPending}
+                  data-testid="send-to-review"
+                  className="w-full px-4 py-2.5 rounded-lg bg-purple-600 text-white font-semibold text-sm hover:bg-purple-700 active:bg-purple-800 transition-colors min-h-[44px] disabled:opacity-50"
+                >
+                  {completeWorkOrder.isPending ? "Enviando..." : "Enviar a Revision"}
+                </button>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    onClick={handleFinalize}
+                    disabled={completeWorkOrder.isPending}
+                    data-testid="finalize-ready"
+                    className="w-full px-4 py-2.5 rounded-lg bg-green-600 text-white font-semibold text-sm hover:bg-green-700 active:bg-green-800 transition-colors min-h-[44px] disabled:opacity-50"
+                  >
+                    {completeWorkOrder.isPending ? "Procesando..." : "Finalizar (Listo para Entrega)"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleSendToReview}
+                    disabled={completeWorkOrder.isPending}
+                    data-testid="send-to-review"
+                    className="w-full px-4 py-2.5 rounded-lg bg-purple-600 text-white font-semibold text-sm hover:bg-purple-700 active:bg-purple-800 transition-colors min-h-[44px] disabled:opacity-50"
+                  >
+                    Enviar a Revision QA
+                  </button>
+                </>
+              )}
+              <button
+                type="button"
+                onClick={() => setShowCompleteForm(false)}
+                disabled={completeWorkOrder.isPending}
+                className="w-full px-4 py-2.5 rounded-lg bg-gray-200 text-gray-700 font-semibold text-sm hover:bg-gray-300 active:bg-gray-400 transition-colors min-h-[44px]"
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showTraineeQaWarning && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-4">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm p-6">
+            <div className="flex items-center gap-3 mb-3">
+              <span className="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center text-xl">⚠️</span>
+              <h3 className="text-lg font-bold text-gray-900">Se requiere aprobacion del Jefe de Taller</h3>
+            </div>
+            <p className="text-sm text-gray-600">
+              Como practicante, esta OT sera enviada a revision. El Jefe de Taller (Juan) debe inspeccionar
+              el trabajo y firmar digitalmente la aprobacion de control de calidad antes de liberar el
+              vehiculo al cliente.
+            </p>
+            <div className="mt-6 flex gap-3 justify-end">
+              <button type="button" onClick={() => setShowTraineeQaWarning(false)} disabled={completeWorkOrder.isPending}
+                className="px-4 py-2.5 rounded-lg bg-gray-200 text-gray-700 font-semibold text-sm hover:bg-gray-300 active:bg-gray-400 transition-colors min-h-[44px]">
+                Cancelar
+              </button>
+              <button type="button" onClick={handleConfirmTraineeReview} disabled={completeWorkOrder.isPending}
+                className="px-4 py-2.5 rounded-lg bg-purple-600 text-white font-semibold text-sm hover:bg-purple-700 active:bg-purple-800 transition-colors min-h-[44px] disabled:opacity-50">
+                {completeWorkOrder.isPending ? "Enviando..." : "Entendido, enviar a revision"}
               </button>
             </div>
           </div>
