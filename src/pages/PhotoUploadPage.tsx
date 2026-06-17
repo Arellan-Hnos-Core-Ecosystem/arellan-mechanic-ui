@@ -234,7 +234,7 @@ export default function PhotoUploadPage() {
               <FormField label="Descripción de la foto">
                 <Input
                   value={description}
-                  onChange={(e) => setDescription(e.target.value)}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setDescription(e.target.value)}
                   placeholder="Ej: Filtro de aceite dañado..."
                   className="h-14"
                 />

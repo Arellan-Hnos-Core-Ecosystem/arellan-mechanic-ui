@@ -161,6 +161,8 @@ export default function OrderDetailPage() {
       socket.off("order:updated");
       socket.off("order:status_changed");
       socket.off("mechanic:progress");
+      socket.disconnect();
+      socketRef.current = null;
     };
   }, [id, token, queryClient]);
 

@@ -54,6 +54,8 @@ export function useMechanicProgress(token: string, mechanicId: string, mechanicN
       socket.off("connect")
       socket.off("disconnect", onDisconnect)
       socket.off("connect_error", onError)
+      socket.disconnect()
+      socketRef.current = null
     }
   }, [token])
 

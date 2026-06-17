@@ -93,6 +93,9 @@ export default defineConfig({
   ],
   resolve: {
     alias: { "@": path.resolve(__dirname, "./src") },
+    // El paquete ui (file:-linkeado) trae su propio node_modules con react:
+    // dedupe fuerza una unica copia de react en el bundle (evita "Invalid hook call")
+    dedupe: ["react", "react-dom"],
   },
   server: {
     port: 3003,

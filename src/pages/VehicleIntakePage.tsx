@@ -348,7 +348,7 @@ export default function VehicleIntakePage() {
                   <Select
                     id="nivel-de-combustible"
                     value={field.value || ""}
-                    onChange={(e) => field.onChange(e.target.value)}
+                    onChange={(e: React.ChangeEvent<HTMLSelectElement>) => field.onChange(e.target.value)}
                     className="h-14"
                     options={[
                       { value: "", label: "Seleccionar nivel...", disabled: true },

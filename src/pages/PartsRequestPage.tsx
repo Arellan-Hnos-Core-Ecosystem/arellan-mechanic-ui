@@ -178,7 +178,7 @@ export default function PartsRequestPage() {
                     <Select
                       id="orden-de-trabajo"
                       value={field.value}
-                      onChange={(e) => field.onChange(e.target.value)}
+                      onChange={(e: React.ChangeEvent<HTMLSelectElement>) => field.onChange(e.target.value)}
                       className="h-14"
                       options={[
                         { value: "", label: "Seleccionar OT...", disabled: true },
@@ -214,7 +214,7 @@ export default function PartsRequestPage() {
                     <Select
                       id="repuesto"
                       value={field.value}
-                      onChange={(e) => field.onChange(e.target.value)}
+                      onChange={(e: React.ChangeEvent<HTMLSelectElement>) => field.onChange(e.target.value)}
                       className="h-14"
                       options={[
                         { value: "", label: "Seleccionar repuesto...", disabled: true },

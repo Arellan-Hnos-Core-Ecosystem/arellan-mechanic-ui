@@ -4,7 +4,7 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite --port 3002",
+    "dev": "vite --port 3003",
     "build": "tsc && vite build",
     "preview": "vite preview",
     "test": "vitest",
@@ -42,5 +42,9 @@
     "vite-plugin-pwa": "^0.17.5",
     "vitest": "^1.2.0",
     "workbox-window": "^7.0.0"
+  },
+  "overrides": {
+    "@arellan-hnos-core-ecosystem/eslint-config": "file:../arellan-design-system/packages/eslint-config",
+    "@arellan-hnos-core-ecosystem/typescript-config": "file:../arellan-design-system/packages/typescript-config"
   }
 }
