@@ -86,9 +86,10 @@ async function processAction(action: OfflineAction) {
   switch (action.type) {
     case "UPDATE_STATUS": {
       const p = action.payload as UpdateStatusPayload;
-      await api.patch(`/orders/${p.orderId}/status`, {
+      // FUN-15: el backend expone POST /orders/:id/status (no PATCH) y su DTO
+      // sólo admite `status` (`notes` se rechazaba por forbidNonWhitelisted).
+      await api.post(`/orders/${p.orderId}/status`, {
         status: p.status,
-        notes: p.notes ?? "",
       });
       break;
     }
@@ -103,6 +104,10 @@ async function processAction(action: OfflineAction) {
         if (p.kilometerReading != null) formData.append("kilometerReading", String(p.kilometerReading));
         if (p.fuelLevel) formData.append("fuelLevel", p.fuelLevel);
         if (p.description) formData.append("description", p.description);
+
+        // FUN-15: el backend exige photoPositions para validar las 5 posiciones
+        // obligatorias (Anti-Fraude #8). Su omisión provocaba 400 en el replay.
+        formData.append("photoPositions", blobs.map((b) => b.position).join(","));
 
         for (const b of blobs) {
           const ext = b.mimeType.split("/")[1] ?? "jpg";
